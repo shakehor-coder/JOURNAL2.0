@@ -23,12 +23,25 @@ import {
  */
 const RemoteParticipantCard = ({ participant, stream }) => {
   const videoRef = useRef(null);
+  const audioRef = useRef(null);
+  const [fullscreen, setFullscreen] = useState(false);
 
+  // Always keep audio playing through dedicated element
   useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
+    if (audioRef.current && stream) {
+      audioRef.current.srcObject = stream;
+      audioRef.current.play?.().catch(() => {});
     }
   }, [stream]);
+
+  const isShowingVideo = Boolean(stream && (participant.hasVideo || participant.isScreenSharing));
+
+  useEffect(() => {
+    if (videoRef.current && stream && isShowingVideo) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play?.().catch((e) => console.log("Remote play err:", e));
+    }
+  }, [stream, isShowingVideo, participant.isScreenSharing, participant.hasVideo]);
 
   const initials = participant.name
     ? participant.name
@@ -39,13 +52,46 @@ const RemoteParticipantCard = ({ participant, stream }) => {
         .toUpperCase()
     : "СТ";
 
-  const isShowingVideo = stream && (participant.hasVideo || participant.isScreenSharing);
+  const toggleFullscreen = () => {
+    if (!fullscreen) {
+      const el = videoRef.current;
+      if (el?.requestFullscreen) {
+        el.requestFullscreen().catch(() => setFullscreen(true));
+      } else {
+        setFullscreen(true);
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => setFullscreen(false));
+      }
+      setFullscreen(false);
+    }
+  };
 
   return (
     <div className={`relative rounded-[10px] bg-surface border-2 border-ink overflow-hidden aspect-video flex items-center justify-center shadow-hard ${participant.isScreenSharing ? "ring-4 ring-accent" : ""}`}>
+      {/* Hidden audio element ensuring audio stream is ALWAYS heard */}
+      <audio
+        ref={(el) => {
+          audioRef.current = el;
+          if (el && stream && el.srcObject !== stream) {
+            el.srcObject = stream;
+            el.play?.().catch(() => {});
+          }
+        }}
+        autoPlay
+        playsInline
+      />
+
       {isShowingVideo ? (
         <video
-          ref={videoRef}
+          ref={(el) => {
+            videoRef.current = el;
+            if (el && stream && el.srcObject !== stream) {
+              el.srcObject = stream;
+              el.play?.().catch(() => {});
+            }
+          }}
           autoPlay
           playsInline
           className={`w-full h-full ${participant.isScreenSharing ? "object-contain bg-black" : "object-cover"}`}
@@ -71,9 +117,14 @@ const RemoteParticipantCard = ({ participant, stream }) => {
           <span>{participant.name}</span>
         </span>
         {participant.isScreenSharing && (
-          <span className="px-2 py-0.5 rounded-[6px] bg-accent text-white border-2 border-ink text-[12px] font-bold shadow-hard-xs animate-pulse">
-            🖥️ Экран
-          </span>
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="px-2 py-0.5 rounded-[6px] bg-accent text-white border-2 border-ink text-[12px] font-bold shadow-hard-xs animate-pulse cursor-pointer hover:bg-accent/90"
+            title="Развернуть демонстрацию экрана"
+          >
+            🖥️ Экран (Во весь экран)
+          </button>
         )}
         {participant.handRaised && (
           <span className="px-2 py-0.5 rounded-[6px] bg-highlight text-on-highlight border-2 border-ink text-[12px] font-bold">
@@ -222,6 +273,29 @@ export const AuditoriumCallPage = ({ setActiveTab }) => {
     }
   };
 
+  // Helper: Create a lightweight silent dummy video track for headless or no-webcam PCs
+  const createDummyVideoTrack = () => {
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = 640;
+      canvas.height = 360;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(0, 0, 640, 360);
+      }
+      const stream = canvas.captureStream ? canvas.captureStream(5) : null;
+      if (stream && stream.getVideoTracks().length > 0) {
+        const track = stream.getVideoTracks()[0];
+        track.enabled = false;
+        return track;
+      }
+    } catch (e) {
+      console.warn("Dummy track creation failed:", e);
+    }
+    return null;
+  };
+
   // Start real user media (camera + microphone)
   const startMedia = async () => {
     try {
@@ -239,6 +313,10 @@ export const AuditoriumCallPage = ({ setActiveTab }) => {
       console.warn("Could not acquire video+audio. Trying audio only:", err.message);
       try {
         const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const dummyTrack = createDummyVideoTrack();
+        if (dummyTrack) {
+          audioStream.addTrack(dummyTrack);
+        }
         localStreamRef.current = audioStream;
         setCameraOn(false);
         setupAudioMeter(audioStream);
@@ -246,7 +324,15 @@ export const AuditoriumCallPage = ({ setActiveTab }) => {
       } catch (err2) {
         console.warn("No physical mic/camera found:", err2.message);
         showNotice("Камера или микрофон не обнаружены (включен режим просмотра)");
-        return null;
+        const fallbackStream = new MediaStream();
+        const dummyTrack = createDummyVideoTrack();
+        if (dummyTrack) {
+          fallbackStream.addTrack(dummyTrack);
+        }
+        localStreamRef.current = fallbackStream;
+        setCameraOn(false);
+        setMicOn(false);
+        return fallbackStream;
       }
     }
   };
@@ -286,19 +372,34 @@ export const AuditoriumCallPage = ({ setActiveTab }) => {
     }
   };
 
-  // Replace video track across all active RTCPeerConnections
-  const replaceVideoTrack = (newTrack) => {
-    Object.values(peerConnectionsRef.current).forEach((pc) => {
+  // Replace video track across all active RTCPeerConnections (or renegotiate if needed)
+  const replaceVideoTrack = async (newTrack) => {
+    for (const [targetSocketId, pc] of Object.entries(peerConnectionsRef.current)) {
       try {
         const senders = pc.getSenders ? pc.getSenders() : [];
-        const videoSender = senders.find((s) => s.track && s.track.kind === "video");
+        let videoSender = senders.find((s) => s.track && s.track.kind === "video");
+        if (!videoSender) {
+          videoSender = senders.find((s) => s.kind === "video" || s.track === null);
+        }
+
         if (videoSender && newTrack) {
-          videoSender.replaceTrack(newTrack).catch((err) => console.warn("replaceTrack error:", err));
+          await videoSender.replaceTrack(newTrack);
+        } else if (newTrack) {
+          pc.addTrack(newTrack, screenStreamRef.current || localStreamRef.current || new MediaStream([newTrack]));
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          if (socket) {
+            socket.emit("call-signal", {
+              targetSocketId,
+              signal: { sdp: pc.localDescription },
+              senderUser: user
+            });
+          }
         }
       } catch (err) {
-        console.warn("Sender error:", err);
+        console.warn("replaceVideoTrack error:", err);
       }
-    });
+    }
   };
 
   // Stop Screen Share cleanly
@@ -308,9 +409,15 @@ export const AuditoriumCallPage = ({ setActiveTab }) => {
       screenStreamRef.current = null;
     }
     setIsScreenSharing(false);
-    const cameraTrack = localStreamRef.current?.getVideoTracks()[0];
-    if (cameraTrack) {
-      replaceVideoTrack(cameraTrack);
+    let revertTrack = localStreamRef.current?.getVideoTracks().find((t) => t.readyState === "live");
+    if (!revertTrack) {
+      revertTrack = createDummyVideoTrack();
+      if (revertTrack && localStreamRef.current) {
+        localStreamRef.current.addTrack(revertTrack);
+      }
+    }
+    if (revertTrack) {
+      replaceVideoTrack(revertTrack);
     }
     if (localVideoRef.current && localStreamRef.current) {
       localVideoRef.current.srcObject = localStreamRef.current;
@@ -318,6 +425,7 @@ export const AuditoriumCallPage = ({ setActiveTab }) => {
     if (socket) {
       socket.emit("update-media-state", { roomId, mediaState: { screen: false, video: cameraOn } });
     }
+    showNotice("Демонстрация экрана остановлена");
   };
 
   // Toggle Screen Share
@@ -338,7 +446,7 @@ export const AuditoriumCallPage = ({ setActiveTab }) => {
         }
 
         // Replace track for all existing remote WebRTC peers!
-        replaceVideoTrack(screenTrack);
+        await replaceVideoTrack(screenTrack);
 
         screenTrack.onended = () => {
           stopScreenShare();
@@ -348,6 +456,7 @@ export const AuditoriumCallPage = ({ setActiveTab }) => {
         if (socket) {
           socket.emit("update-media-state", { roomId, mediaState: { screen: true, video: true } });
         }
+        showNotice("Демонстрация экрана запущена!");
       } catch (e) {
         console.warn("Screen share cancelled or failed:", e);
       }
@@ -404,10 +513,14 @@ export const AuditoriumCallPage = ({ setActiveTab }) => {
     };
 
     pc.ontrack = (event) => {
-      if (event.streams && event.streams[0]) {
+      let stream = event.streams && event.streams[0];
+      if (!stream && event.track) {
+        stream = new MediaStream([event.track]);
+      }
+      if (stream) {
         setRemoteStreams((prev) => ({
           ...prev,
-          [targetSocketId]: event.streams[0]
+          [targetSocketId]: stream
         }));
       }
     };

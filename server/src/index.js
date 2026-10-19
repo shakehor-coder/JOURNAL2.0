@@ -676,13 +676,26 @@ app.post("/api/journal/sync", async (req, res) => {
     }
   } catch(e) {}
 
+  // 4. Fetch Marks & Visits
+  try {
+    const marksRes = await axios.get(`${topAcademyApiBase}/progress/operations/student-visits`, {
+      headers: { Authorization: `Bearer ${userToken}` },
+      timeout: 6000
+    });
+    if (Array.isArray(marksRes.data) && marksRes.data.length > 0) {
+      activeMarks = marksRes.data;
+      syncResults.marks = true;
+    }
+  } catch(e) {}
+
   res.json({
     success: true,
     message: "Синхронизация с серверами Академии ТОП успешно выполнена!",
     syncResults,
     profile: activeProfile,
     schedule: activeSchedule,
-    homeworks: activeHomeworks
+    homeworks: activeHomeworks,
+    marks: activeMarks
   });
 });
 

@@ -1,0 +1,16 @@
+{
+  "name": "flipclip-telegram-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for conversational chatting, fun games and Top Academy Cloud portal integration",
+  "type": "module",
+  "main": "src/bot.js",
+  "scripts": {
+    "start": "node src/bot.js",
+    "dev": "node --watch src/bot.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "node-telegram-bot-api": "^0.66.0"
+  }
+}

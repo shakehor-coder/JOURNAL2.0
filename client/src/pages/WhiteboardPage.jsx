@@ -15,16 +15,18 @@ import {
 export const WhiteboardPage = () => {
   const { socket } = useAuth();
   const canvasRef = useRef(null);
+  const previewCanvasRef = useRef(null);
   const contextRef = useRef(null);
+  const previewContextRef = useRef(null);
   const lastShapePosRef = useRef({ x: 0, y: 0 });
   const lastPosRef = useRef({ x: 0, y: 0 });
+  const activeTouchIdRef = useRef(null);
 
   const [tool, setTool] = useState("pen");
   const [color, setColor] = useState("#1a1917");
   const [lineWidth, setLineWidth] = useState(3);
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
-  const [snapshot, setSnapshot] = useState(null);
 
   const colors = [
     "#1a1917", // Ink Black
@@ -77,6 +79,18 @@ export const WhiteboardPage = () => {
     ctx.fillRect(0, 0, rect.width, rect.height);
     drawGrid(ctx, rect.width, rect.height);
 
+    // Initialize overlay preview canvas
+    const pCanvas = previewCanvasRef.current;
+    if (pCanvas) {
+      pCanvas.width = rect.width * 2;
+      pCanvas.height = rect.height * 2;
+      const pCtx = pCanvas.getContext("2d");
+      pCtx.scale(2, 2);
+      pCtx.lineCap = "round";
+      pCtx.lineJoin = "round";
+      previewContextRef.current = pCtx;
+    }
+
     if (socket) {
       socket.emit("join-board-room", { roomId: "global-board" });
       socket.on("board-init-state", (strokes) => {
@@ -107,9 +121,24 @@ export const WhiteboardPage = () => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    const touch = e.touches && e.touches[0] ? e.touches[0] : (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0] : null);
-    const clientX = touch ? touch.clientX : e.clientX;
-    const clientY = touch ? touch.clientY : e.clientY;
+
+    let clientX = e.clientX;
+    let clientY = e.clientY;
+
+    if (e.touches && e.touches.length > 0) {
+      let touch = null;
+      if (activeTouchIdRef.current !== null) {
+        touch = Array.from(e.touches).find((t) => t.identifier === activeTouchIdRef.current);
+      }
+      if (!touch) touch = e.touches[0];
+      clientX = touch.clientX;
+      clientY = touch.clientY;
+    } else if (e.changedTouches && e.changedTouches.length > 0) {
+      const touch = e.changedTouches[0];
+      clientX = touch.clientX;
+      clientY = touch.clientY;
+    }
+
     return {
       x: clientX - rect.left,
       y: clientY - rect.top
@@ -119,21 +148,20 @@ export const WhiteboardPage = () => {
   const startDrawing = (e) => {
     if (e.type && e.type.startsWith("touch")) {
       e.preventDefault();
+      if (e.touches && e.touches.length > 0) {
+        activeTouchIdRef.current = e.touches[0].identifier;
+      }
     }
     const pos = getCoordinates(e);
     setIsDrawing(true);
     setStartPos(pos);
     lastPosRef.current = pos;
+    lastShapePosRef.current = pos;
 
     const ctx = contextRef.current;
     if (!ctx) return;
     ctx.strokeStyle = tool === "eraser" ? bgColor : color;
     ctx.lineWidth = tool === "eraser" ? lineWidth * 4 : lineWidth;
-
-    if (tool !== "pen" && tool !== "eraser") {
-      const canvas = canvasRef.current;
-      setSnapshot(ctx.getImageData(0, 0, canvas.width, canvas.height));
-    }
   };
 
   const draw = (e) => {
@@ -143,7 +171,9 @@ export const WhiteboardPage = () => {
     }
     const currentPos = getCoordinates(e);
     const ctx = contextRef.current;
-    if (!ctx) return;
+    const pCtx = previewContextRef.current;
+    const canvas = canvasRef.current;
+    if (!ctx || !canvas) return;
 
     if (tool === "pen" || tool === "eraser") {
       const fromPos = { ...lastPosRef.current };
@@ -174,48 +204,90 @@ export const WhiteboardPage = () => {
           }
         });
       }
-    } else if (snapshot) {
+    } else if (pCtx) {
+      // Draw temporary shape on isolated preview canvas without mutating main canvas
       lastShapePosRef.current = currentPos;
-      ctx.putImageData(snapshot, 0, 0);
-      ctx.beginPath();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = lineWidth;
+      const rect = canvas.getBoundingClientRect();
+      pCtx.clearRect(0, 0, rect.width, rect.height);
+      pCtx.save();
+      pCtx.strokeStyle = color;
+      pCtx.lineWidth = lineWidth;
+      pCtx.lineCap = "round";
+      pCtx.lineJoin = "round";
+      pCtx.beginPath();
 
       if (tool === "rect") {
-        ctx.strokeRect(startPos.x, startPos.y, currentPos.x - startPos.x, currentPos.y - startPos.y);
+        pCtx.strokeRect(startPos.x, startPos.y, currentPos.x - startPos.x, currentPos.y - startPos.y);
       } else if (tool === "circle") {
         const radius = Math.sqrt(
           Math.pow(currentPos.x - startPos.x, 2) + Math.pow(currentPos.y - startPos.y, 2)
         );
-        ctx.arc(startPos.x, startPos.y, radius, 0, 2 * Math.PI);
-        ctx.stroke();
+        pCtx.arc(startPos.x, startPos.y, radius, 0, 2 * Math.PI);
+        pCtx.stroke();
       } else if (tool === "line") {
-        ctx.moveTo(startPos.x, startPos.y);
-        ctx.lineTo(currentPos.x, currentPos.y);
-        ctx.stroke();
+        pCtx.moveTo(startPos.x, startPos.y);
+        pCtx.lineTo(currentPos.x, currentPos.y);
+        pCtx.stroke();
       } else if (tool === "arrow") {
-        drawArrow(ctx, startPos.x, startPos.y, currentPos.x, currentPos.y);
+        drawArrow(pCtx, startPos.x, startPos.y, currentPos.x, currentPos.y);
       }
+      pCtx.restore();
     }
   };
 
   const stopDrawing = () => {
     if (!isDrawing) return;
     setIsDrawing(false);
-    const ctx = contextRef.current;
-    if (ctx) ctx.closePath();
+    activeTouchIdRef.current = null;
 
-    if (tool !== "pen" && tool !== "eraser" && socket && lastShapePosRef.current) {
-      socket.emit("board-draw-stroke", {
-        roomId: "global-board",
-        stroke: {
-          tool,
-          from: startPos,
-          to: lastShapePosRef.current,
-          color,
-          lineWidth
-        }
-      });
+    const ctx = contextRef.current;
+    const pCtx = previewContextRef.current;
+    const canvas = canvasRef.current;
+
+    // Clear preview canvas
+    if (pCtx && canvas) {
+      const rect = canvas.getBoundingClientRect();
+      pCtx.clearRect(0, 0, rect.width, rect.height);
+    }
+
+    if (tool !== "pen" && tool !== "eraser" && ctx && lastShapePosRef.current) {
+      const finalPos = lastShapePosRef.current;
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+
+      if (tool === "rect") {
+        ctx.strokeRect(startPos.x, startPos.y, finalPos.x - startPos.x, finalPos.y - startPos.y);
+      } else if (tool === "circle") {
+        const radius = Math.sqrt(
+          Math.pow(finalPos.x - startPos.x, 2) + Math.pow(finalPos.y - startPos.y, 2)
+        );
+        ctx.arc(startPos.x, startPos.y, radius, 0, 2 * Math.PI);
+        ctx.stroke();
+      } else if (tool === "line") {
+        ctx.moveTo(startPos.x, startPos.y);
+        ctx.lineTo(finalPos.x, finalPos.y);
+        ctx.stroke();
+      } else if (tool === "arrow") {
+        drawArrow(ctx, startPos.x, startPos.y, finalPos.x, finalPos.y);
+      }
+      ctx.restore();
+
+      if (socket) {
+        socket.emit("board-draw-stroke", {
+          roomId: "global-board",
+          stroke: {
+            tool,
+            from: startPos,
+            to: finalPos,
+            color,
+            lineWidth
+          }
+        });
+      }
     }
   };
 
@@ -272,10 +344,16 @@ export const WhiteboardPage = () => {
   const clearCanvas = () => {
     const canvas = canvasRef.current;
     const ctx = contextRef.current;
+    const pCanvas = previewCanvasRef.current;
+    const pCtx = previewContextRef.current;
     const rect = canvas.getBoundingClientRect();
     ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, rect.width, rect.height);
     drawGrid(ctx, rect.width, rect.height);
+
+    if (pCtx) {
+      pCtx.clearRect(0, 0, rect.width, rect.height);
+    }
 
     if (socket) {
       socket.emit("board-clear", { roomId: "global-board" });
@@ -426,6 +504,12 @@ export const WhiteboardPage = () => {
           onTouchMove={draw}
           onTouchEnd={stopDrawing}
           className="w-full h-full cursor-crosshair block touch-none"
+        />
+
+        {/* Transparent overlay preview canvas for non-destructive local shape drafting */}
+        <canvas
+          ref={previewCanvasRef}
+          className="absolute inset-0 pointer-events-none w-full h-full block"
         />
 
         <div className="absolute top-3 right-3 flex items-center gap-2 px-2.5 py-1 rounded-[6px] bg-surface border-2 border-ink text-[11px] font-mono text-ink font-bold shadow-hard-xs">

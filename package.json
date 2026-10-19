@@ -8,6 +8,7 @@
     "build:client": "cd client && npm run build",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
+    "bot": "cd bot && npm start",
     "start": "node server/src/index.js"
   }
 }
