@@ -17,6 +17,7 @@ export const WhiteboardPage = () => {
   const canvasRef = useRef(null);
   const contextRef = useRef(null);
   const lastShapePosRef = useRef({ x: 0, y: 0 });
+  const lastPosRef = useRef({ x: 0, y: 0 });
 
   const [tool, setTool] = useState("pen");
   const [color, setColor] = useState("#1a1917");
@@ -104,26 +105,32 @@ export const WhiteboardPage = () => {
 
   const getCoordinates = (e) => {
     const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
+    const touch = e.touches && e.touches[0] ? e.touches[0] : (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0] : null);
+    const clientX = touch ? touch.clientX : e.clientX;
+    const clientY = touch ? touch.clientY : e.clientY;
     return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
+      x: clientX - rect.left,
+      y: clientY - rect.top
     };
   };
 
   const startDrawing = (e) => {
+    if (e.type && e.type.startsWith("touch")) {
+      e.preventDefault();
+    }
     const pos = getCoordinates(e);
     setIsDrawing(true);
     setStartPos(pos);
+    lastPosRef.current = pos;
 
     const ctx = contextRef.current;
+    if (!ctx) return;
     ctx.strokeStyle = tool === "eraser" ? bgColor : color;
     ctx.lineWidth = tool === "eraser" ? lineWidth * 4 : lineWidth;
 
-    if (tool === "pen" || tool === "eraser") {
-      ctx.beginPath();
-      ctx.moveTo(pos.x, pos.y);
-    } else {
+    if (tool !== "pen" && tool !== "eraser") {
       const canvas = canvasRef.current;
       setSnapshot(ctx.getImageData(0, 0, canvas.width, canvas.height));
     }
@@ -131,26 +138,42 @@ export const WhiteboardPage = () => {
 
   const draw = (e) => {
     if (!isDrawing) return;
+    if (e.type && e.type.startsWith("touch")) {
+      e.preventDefault();
+    }
     const currentPos = getCoordinates(e);
     const ctx = contextRef.current;
+    if (!ctx) return;
 
     if (tool === "pen" || tool === "eraser") {
-      ctx.lineTo(currentPos.x, currentPos.y);
+      const fromPos = { ...lastPosRef.current };
+      const toPos = currentPos;
+
+      ctx.save();
+      ctx.strokeStyle = tool === "eraser" ? bgColor : color;
+      ctx.lineWidth = tool === "eraser" ? lineWidth * 4 : lineWidth;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      ctx.moveTo(fromPos.x, fromPos.y);
+      ctx.lineTo(toPos.x, toPos.y);
       ctx.stroke();
+      ctx.restore();
+
+      lastPosRef.current = toPos;
 
       if (socket) {
         socket.emit("board-draw-stroke", {
           roomId: "global-board",
           stroke: {
             tool,
-            from: startPos,
-            to: currentPos,
+            from: fromPos,
+            to: toPos,
             color: tool === "eraser" ? bgColor : color,
             lineWidth: tool === "eraser" ? lineWidth * 4 : lineWidth
           }
         });
       }
-      setStartPos(currentPos);
     } else if (snapshot) {
       lastShapePosRef.current = currentPos;
       ctx.putImageData(snapshot, 0, 0);
@@ -180,7 +203,7 @@ export const WhiteboardPage = () => {
     if (!isDrawing) return;
     setIsDrawing(false);
     const ctx = contextRef.current;
-    ctx.closePath();
+    if (ctx) ctx.closePath();
 
     if (tool !== "pen" && tool !== "eraser" && socket && lastShapePosRef.current) {
       socket.emit("board-draw-stroke", {
@@ -219,6 +242,8 @@ export const WhiteboardPage = () => {
     ctx.save();
     ctx.strokeStyle = stroke.color || color;
     ctx.lineWidth = stroke.lineWidth || lineWidth;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     ctx.beginPath();
 
     if (!stroke.tool || stroke.tool === "pen" || stroke.tool === "eraser") {
@@ -397,7 +422,10 @@ export const WhiteboardPage = () => {
           onMouseMove={draw}
           onMouseUp={stopDrawing}
           onMouseLeave={stopDrawing}
-          className="w-full h-full cursor-crosshair block"
+          onTouchStart={startDrawing}
+          onTouchMove={draw}
+          onTouchEnd={stopDrawing}
+          className="w-full h-full cursor-crosshair block touch-none"
         />
 
         <div className="absolute top-3 right-3 flex items-center gap-2 px-2.5 py-1 rounded-[6px] bg-surface border-2 border-ink text-[11px] font-mono text-ink font-bold shadow-hard-xs">

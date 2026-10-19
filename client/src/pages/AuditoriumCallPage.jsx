@@ -39,14 +39,16 @@ const RemoteParticipantCard = ({ participant, stream }) => {
         .toUpperCase()
     : "СТ";
 
+  const isShowingVideo = stream && (participant.hasVideo || participant.isScreenSharing);
+
   return (
-    <div className="relative rounded-[10px] bg-surface border-2 border-ink overflow-hidden aspect-video flex items-center justify-center shadow-hard">
-      {stream && participant.hasVideo ? (
+    <div className={`relative rounded-[10px] bg-surface border-2 border-ink overflow-hidden aspect-video flex items-center justify-center shadow-hard ${participant.isScreenSharing ? "ring-4 ring-accent" : ""}`}>
+      {isShowingVideo ? (
         <video
           ref={videoRef}
           autoPlay
           playsInline
-          className="w-full h-full object-cover"
+          className={`w-full h-full ${participant.isScreenSharing ? "object-contain bg-black" : "object-cover"}`}
         />
       ) : (
         <div className="flex flex-col items-center justify-center p-4 text-center">
@@ -59,7 +61,7 @@ const RemoteParticipantCard = ({ participant, stream }) => {
       )}
 
       {/* Participant Name Badge */}
-      <div className="absolute top-3 left-3 flex items-center gap-1.5">
+      <div className="absolute top-3 left-3 flex items-center gap-1.5 flex-wrap">
         <span className="px-2.5 py-1 rounded-[6px] bg-surface text-ink border-2 border-ink text-[12px] font-bold flex items-center gap-1.5 shadow-hard-xs">
           <span
             className={`w-2 h-2 rounded-full ${
@@ -68,6 +70,11 @@ const RemoteParticipantCard = ({ participant, stream }) => {
           />
           <span>{participant.name}</span>
         </span>
+        {participant.isScreenSharing && (
+          <span className="px-2 py-0.5 rounded-[6px] bg-accent text-white border-2 border-ink text-[12px] font-bold shadow-hard-xs animate-pulse">
+            🖥️ Экран
+          </span>
+        )}
         {participant.handRaised && (
           <span className="px-2 py-0.5 rounded-[6px] bg-highlight text-on-highlight border-2 border-ink text-[12px] font-bold">
             ✋ Рука
@@ -120,6 +127,7 @@ export const AuditoriumCallPage = ({ setActiveTab }) => {
   const animFrameIdRef = useRef(null);
   const peerConnectionsRef = useRef({});
   const isSpeakingRef = useRef(false);
+  const screenStreamRef = useRef(null);
 
   const userName = user?.fullName || "Алексей Смирнов";
   const userInitials = userName
@@ -278,40 +286,73 @@ export const AuditoriumCallPage = ({ setActiveTab }) => {
     }
   };
 
+  // Replace video track across all active RTCPeerConnections
+  const replaceVideoTrack = (newTrack) => {
+    Object.values(peerConnectionsRef.current).forEach((pc) => {
+      try {
+        const senders = pc.getSenders ? pc.getSenders() : [];
+        const videoSender = senders.find((s) => s.track && s.track.kind === "video");
+        if (videoSender && newTrack) {
+          videoSender.replaceTrack(newTrack).catch((err) => console.warn("replaceTrack error:", err));
+        }
+      } catch (err) {
+        console.warn("Sender error:", err);
+      }
+    });
+  };
+
+  // Stop Screen Share cleanly
+  const stopScreenShare = () => {
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach((t) => t.stop());
+      screenStreamRef.current = null;
+    }
+    setIsScreenSharing(false);
+    const cameraTrack = localStreamRef.current?.getVideoTracks()[0];
+    if (cameraTrack) {
+      replaceVideoTrack(cameraTrack);
+    }
+    if (localVideoRef.current && localStreamRef.current) {
+      localVideoRef.current.srcObject = localStreamRef.current;
+    }
+    if (socket) {
+      socket.emit("update-media-state", { roomId, mediaState: { screen: false, video: cameraOn } });
+    }
+  };
+
   // Toggle Screen Share
   const toggleScreenShare = async () => {
     if (!isScreenSharing) {
       try {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            cursor: "always"
+          },
+          audio: false
+        });
+        screenStreamRef.current = screenStream;
+
+        const screenTrack = screenStream.getVideoTracks()[0];
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = screenStream;
         }
 
-        screenStream.getVideoTracks()[0].onended = () => {
-          setIsScreenSharing(false);
-          if (localStreamRef.current && localVideoRef.current) {
-            localVideoRef.current.srcObject = localStreamRef.current;
-          }
-          if (socket) {
-            socket.emit("update-media-state", { roomId, mediaState: { screen: false } });
-          }
+        // Replace track for all existing remote WebRTC peers!
+        replaceVideoTrack(screenTrack);
+
+        screenTrack.onended = () => {
+          stopScreenShare();
         };
 
         setIsScreenSharing(true);
         if (socket) {
-          socket.emit("update-media-state", { roomId, mediaState: { screen: true } });
+          socket.emit("update-media-state", { roomId, mediaState: { screen: true, video: true } });
         }
       } catch (e) {
-        console.warn("Screen share cancelled:", e);
+        console.warn("Screen share cancelled or failed:", e);
       }
     } else {
-      setIsScreenSharing(false);
-      if (localStreamRef.current && localVideoRef.current) {
-        localVideoRef.current.srcObject = localStreamRef.current;
-      }
-      if (socket) {
-        socket.emit("update-media-state", { roomId, mediaState: { screen: false } });
-      }
+      stopScreenShare();
     }
   };
 
@@ -343,7 +384,12 @@ export const AuditoriumCallPage = ({ setActiveTab }) => {
 
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => {
-        pc.addTrack(track, localStreamRef.current);
+        if (track.kind === "video" && screenStreamRef.current) {
+          const screenTrack = screenStreamRef.current.getVideoTracks()[0];
+          pc.addTrack(screenTrack || track, localStreamRef.current);
+        } else {
+          pc.addTrack(track, localStreamRef.current);
+        }
       });
     }
 
@@ -392,6 +438,11 @@ export const AuditoriumCallPage = ({ setActiveTab }) => {
   // Leave Call Room
   const handleLeaveCall = () => {
     setInCall(false);
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach((t) => t.stop());
+      screenStreamRef.current = null;
+    }
+    setIsScreenSharing(false);
     if (animFrameIdRef.current) {
       cancelAnimationFrame(animFrameIdRef.current);
     }
@@ -447,6 +498,7 @@ export const AuditoriumCallPage = ({ setActiveTab }) => {
         role: data.user?.role || "Студент",
         isSpeaking: false,
         hasVideo: data.mediaState?.video ?? true,
+        isScreenSharing: data.mediaState?.screen ?? false,
         hasMic: data.mediaState?.mic ?? true,
         handRaised: data.mediaState?.handRaised ?? false
       };
@@ -482,6 +534,7 @@ export const AuditoriumCallPage = ({ setActiveTab }) => {
           role: item.user?.role || "Студент",
           isSpeaking: false,
           hasVideo: item.mediaState?.video ?? true,
+          isScreenSharing: item.mediaState?.screen ?? false,
           hasMic: item.mediaState?.mic ?? true,
           handRaised: item.mediaState?.handRaised ?? false
         }));
@@ -523,6 +576,7 @@ export const AuditoriumCallPage = ({ setActiveTab }) => {
               ...p,
               hasMic: mediaState.mic !== undefined ? mediaState.mic : p.hasMic,
               hasVideo: mediaState.video !== undefined ? mediaState.video : p.hasVideo,
+              isScreenSharing: mediaState.screen !== undefined ? mediaState.screen : p.isScreenSharing,
               handRaised: mediaState.handRaised !== undefined ? mediaState.handRaised : p.handRaised,
               isSpeaking: mediaState.isSpeaking !== undefined ? mediaState.isSpeaking : p.isSpeaking
             };
@@ -671,13 +725,13 @@ export const AuditoriumCallPage = ({ setActiveTab }) => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-h-[380px]">
               {/* Local Participant Card */}
               <div className="relative rounded-[10px] bg-ink border-2 border-ink overflow-hidden aspect-video flex items-center justify-center shadow-hard">
-                {cameraOn ? (
+                {cameraOn || isScreenSharing ? (
                   <video
                     ref={localVideoRef}
                     autoPlay
                     playsInline
                     muted
-                    className="w-full h-full object-cover -scale-x-100"
+                    className={`w-full h-full ${isScreenSharing ? "object-contain bg-black" : "object-cover -scale-x-100"}`}
                   />
                 ) : (
                   <div className="flex flex-col items-center justify-center p-4 text-center">

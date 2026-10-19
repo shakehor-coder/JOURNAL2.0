@@ -47,7 +47,7 @@ export const mockStudentProfile = {
   ]
 };
 
-export const mockSchedule = [
+const rawMockSchedule = [
   {
     date: "2026-10-12",
     dayOfWeek: "Понедельник",
@@ -455,7 +455,7 @@ export const mockSchedule = [
   }
 ];
 
-export const mockHomeworks = [
+const rawMockHomeworks = [
   {
     id: "hw-1",
     subject: "Разработка веб-приложений (React / Node.js)",
@@ -546,6 +546,43 @@ export const mockHomeworks = [
     }
   }
 ];
+
+function getCurrentWeekSchedule(baseScheduleTemplate) {
+  const now = new Date();
+  const dayOfWeek = now.getDay(); // 0 is Sunday, 1 is Monday...
+  const distanceToMonday = (dayOfWeek + 6) % 7;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - distanceToMonday);
+
+  const todayStr = now.toISOString().split("T")[0];
+
+  return baseScheduleTemplate.map((day, idx) => {
+    const dayDate = new Date(monday);
+    dayDate.setDate(monday.getDate() + idx);
+    const dateStr = dayDate.toISOString().split("T")[0];
+    return {
+      ...day,
+      date: dateStr,
+      isToday: dateStr === todayStr
+    };
+  });
+}
+
+function getCurrentHomeworks(baseHomeworks) {
+  const now = new Date();
+  return baseHomeworks.map((hw, idx) => {
+    const d = new Date(now);
+    d.setDate(now.getDate() + (idx * 2 - 1));
+    const deadlineStr = `${d.toISOString().split("T")[0]} 23:59`;
+    return {
+      ...hw,
+      deadline: deadlineStr
+    };
+  });
+}
+
+export const mockSchedule = getCurrentWeekSchedule(rawMockSchedule);
+export const mockHomeworks = getCurrentHomeworks(rawMockHomeworks);
 
 export const mockMarks = [
   {
