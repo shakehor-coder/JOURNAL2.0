@@ -1,10 +1,9 @@
 @echo off
 chcp 65001 > nul
-title Telegram Bot • Cloud MyStat
+title Telegram Chat Bot (@bsilend_bot)
 cd /d "%~dp0\bot"
 echo ========================================================
-echo  🚀 Запуск Telegram-бота (@bsilend_bot)
-echo  🔑 Application Key Клауда: 6a56a5df2667e65aab73ce...
+echo  🚀 Запуск разговорного Telegram-бота (@bsilend_bot)
 echo ========================================================
 echo.
 npm start

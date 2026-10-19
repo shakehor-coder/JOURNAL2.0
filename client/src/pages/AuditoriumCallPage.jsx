@@ -147,9 +147,13 @@ const RemoteParticipantCard = ({ participant, stream }) => {
   );
 };
 
-export const AuditoriumCallPage = ({ setActiveTab }) => {
+export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoomId }) => {
   const { user, socket } = useAuth();
-  const [roomId] = useState("web-dev-room-402");
+  const [roomId, setLocalRoomId] = useState(initialRoomId || "web-dev-room-402");
+
+  useEffect(() => {
+    if (initialRoomId) setLocalRoomId(initialRoomId);
+  }, [initialRoomId]);
   const [inCall, setInCall] = useState(false);
   const [micOn, setMicOn] = useState(true);
   const [cameraOn, setCameraOn] = useState(true);

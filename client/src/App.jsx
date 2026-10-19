@@ -56,6 +56,7 @@ export default function App() {
   const { isAuthenticated } = useAuth();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedProfileId, setSelectedProfileId] = useState("me");
+  const [selectedRoomId, setSelectedRoomId] = useState("web-dev-room-402");
 
   if (!isAuthenticated) {
     return <LoginPage />;
@@ -102,11 +103,27 @@ export default function App() {
                 onSelectClassmate={(id) => setSelectedProfileId(id)}
               />
             )}
-            {activeTab === "schedule" && <SchedulePage setActiveTab={setActiveTab} />}
+            {activeTab === "schedule" && (
+              <SchedulePage
+                setActiveTab={setActiveTab}
+                onSelectRoom={(rid) => setSelectedRoomId(rid)}
+              />
+            )}
             {activeTab === "homework" && <HomeworkPage />}
             {activeTab === "marks" && <MarksPage />}
-            {activeTab === "call" && <AuditoriumCallPage setActiveTab={setActiveTab} />}
-            {activeTab === "whiteboard" && <WhiteboardPage />}
+            {activeTab === "call" && (
+              <AuditoriumCallPage
+                setActiveTab={setActiveTab}
+                roomId={selectedRoomId}
+                setRoomId={setSelectedRoomId}
+              />
+            )}
+            {activeTab === "whiteboard" && (
+              <WhiteboardPage
+                roomId={selectedRoomId}
+                setRoomId={setSelectedRoomId}
+              />
+            )}
             {activeTab === "code" && <CodeRunnerPage />}
             {activeTab === "leaderboard" && (
               <LeaderboardPage

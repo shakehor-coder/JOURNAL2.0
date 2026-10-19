@@ -48,7 +48,7 @@ const getTypeBadgeClass = (type = "") => {
   return "bg-surface-2 text-ink border-ink";
 };
 
-export const SchedulePage = ({ setActiveTab }) => {
+export const SchedulePage = ({ setActiveTab, onSelectRoom }) => {
   const [scheduleData, setScheduleData] = useState([]);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [viewMode, setViewMode] = useState("day"); // 'day' | 'week'
@@ -346,7 +346,11 @@ export const SchedulePage = ({ setActiveTab }) => {
                         <div className="flex items-center gap-2 shrink-0">
                           <button
                             type="button"
-                            onClick={() => setActiveTab("call")}
+                            onClick={() => {
+                              const rId = pair.onlineCallRoom || ("aud-" + (pair.room?.match(/\d+/)?.[0] || "402"));
+                              if (onSelectRoom) onSelectRoom(rId);
+                              setActiveTab("call");
+                            }}
                             className="btn pri h-9 text-xs font-bold flex items-center gap-2"
                           >
                             <Video className="w-4 h-4" />
@@ -354,7 +358,11 @@ export const SchedulePage = ({ setActiveTab }) => {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setActiveTab("whiteboard")}
+                            onClick={() => {
+                              const rId = pair.onlineCallRoom || ("aud-" + (pair.room?.match(/\d+/)?.[0] || "402"));
+                              if (onSelectRoom) onSelectRoom(rId);
+                              setActiveTab("whiteboard");
+                            }}
                             className="btn sec h-9 text-xs font-bold flex items-center gap-1.5"
                           >
                             <PenTool className="w-4 h-4 text-ink" />

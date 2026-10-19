@@ -894,12 +894,15 @@ io.on("connection", (socket) => {
     io.to(`call-${roomId}`).emit("new-call-message", msgPayload);
   });
 
-  // Whiteboard Realtime Sync
+  // Whiteboard Realtime Sync per Room / Classroom
   socket.on("join-board-room", ({ roomId }) => {
     socket.join(`board-${roomId}`);
-    if (boardStates.has(roomId)) {
-      socket.emit("board-init-state", boardStates.get(roomId));
-    }
+    const state = boardStates.get(roomId) || [];
+    socket.emit("board-init-state", state);
+  });
+
+  socket.on("leave-board-room", ({ roomId }) => {
+    socket.leave(`board-${roomId}`);
   });
 
   socket.on("board-draw-stroke", ({ roomId, stroke }) => {
@@ -907,11 +910,27 @@ io.on("connection", (socket) => {
       boardStates.set(roomId, []);
     }
     const strokes = boardStates.get(roomId);
+    if (stroke?.id) {
+      const existingIdx = strokes.findIndex((s) => s.id === stroke.id);
+      if (existingIdx !== -1) {
+        strokes[existingIdx] = stroke;
+        socket.to(`board-${roomId}`).emit("board-update-stroke", stroke);
+        return;
+      }
+    }
     strokes.push(stroke);
     // Keep max 5000 elements in memory
     if (strokes.length > 5000) strokes.shift();
 
     socket.to(`board-${roomId}`).emit("board-draw-stroke", stroke);
+  });
+
+  socket.on("board-undo", ({ roomId }) => {
+    if (boardStates.has(roomId)) {
+      const strokes = boardStates.get(roomId);
+      strokes.pop();
+      io.to(`board-${roomId}`).emit("board-init-state", strokes);
+    }
   });
 
   socket.on("board-clear", ({ roomId }) => {

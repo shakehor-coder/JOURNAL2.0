@@ -1,19 +1,11 @@
 import TelegramBot from "node-telegram-bot-api";
 import dotenv from "dotenv";
 import {
-  APPLICATION_KEY,
-  loginToCloud,
-  getUserProfile,
-  getSchedule,
-  getHomeworks,
-  getMarks,
-  demoData
-} from "./cloudApi.js";
-import {
   magic8BallAnswers,
   excuses,
-  itJokes,
+  jokes,
   dailyMotivations,
+  randomFacts,
   quizQuestions,
   getRandomItem
 } from "./funFeatures.js";
@@ -32,16 +24,11 @@ if (!TOKEN) {
 const bot = new TelegramBot(TOKEN, { polling: true });
 
 // Хранилище сессий пользователей: Map<chatId, SessionState>
-// { token, profile, isDemo, waitingForLogin, gameState: { type, target, attempts, score } }
 const userSessions = new Map();
 
 function getSession(chatId) {
   if (!userSessions.has(chatId)) {
     userSessions.set(chatId, {
-      token: null,
-      profile: null,
-      isDemo: true, // По умолчанию включен демо-режим, пока студент не залогинился
-      waitingForLogin: false,
       gameState: null
     });
   }
@@ -52,11 +39,10 @@ function getSession(chatId) {
 const mainKeyboard = {
   reply_markup: {
     keyboard: [
-      [{ text: "📅 Расписание" }, { text: "📚 Домашка" }],
-      [{ text: "🏆 Оценки" }, { text: "💰 Баланс коинов" }],
-      [{ text: "🎲 Игры и развлечения" }, { text: "🔮 Шар судьбы" }],
-      [{ text: "🎭 Отмазка для препода" }, { text: "💡 Мотивация / Шутка" }],
-      [{ text: "👤 Мой профиль" }, { text: "🔑 Войти в Клауд" }]
+      [{ text: "💬 Поболтать" }, { text: "🎲 Игры и развлечения" }],
+      [{ text: "🔮 Шар судьбы" }, { text: "💡 Интересный факт" }],
+      [{ text: "😂 Шутка / Анекдот" }, { text: "🎭 Генератор отмазок" }],
+      [{ text: "🌟 Мотивация" }, { text: "🪙 Орёл или Решка" }]
     ],
     resize_keyboard: true,
     persistent: true
@@ -64,25 +50,25 @@ const mainKeyboard = {
 };
 
 console.log("==========================================");
-console.log("🚀 FlipClip Telegram Bot запускается...");
-console.log(`🔑 Application Key Клауда: ${APPLICATION_KEY.slice(0, 10)}...`);
+console.log("🚀 Telegram-бот успешно запускается...");
 console.log("==========================================");
 
 // Команда /start
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
   const firstName = msg.from.first_name || "друг";
-  const session = getSession(chatId);
 
   const welcomeText = 
     `👋 **Привет, ${firstName}!**\n\n` +
-    `Я — **FlipClip** 🤖, твой разговорный бот и умный спутник студента Компьютерной Академии ТОП!\n\n` +
-    `✨ **Что я умею:**\n` +
-    `• 💬 **Обычное живое общение** — напиши мне любую мысль, вопрос, шутку, и я поддержу диалог!\n` +
-    `• 🎓 **Связь с «Клаудом» (MyStat)** по ключу приложения \`${APPLICATION_KEY.slice(0, 12)}...\` — расписание, домашки, оценки и баланс StepCoins!\n` +
-    `• 🎲 **Прикольные возможности** — игры (камень-ножницы-бумага, угадай число, викторины, дайс), шар предсказаний и генератор отмазок от пар!\n\n` +
-    `⚡ Сейчас активен **Демо-режим Клауда** (ты уже можешь протестировать кнопки расписания и оценок). Чтобы подключить свой реальный дневник, нажми **«🔑 Войти в Клауд»**.\n\n` +
-    `Выбирай действие на клавиатуре внизу или просто пиши мне в чат! 🚀`;
+    `Я — твой умный, веселый разговорный бот! 🤖\n\n` +
+    `✨ **Что я умею делать:**\n` +
+    `• 💬 **Живое общение** — напиши мне любую мысль или вопрос в чат, я поддержу диалог, отвечу или пошучу!\n` +
+    `• 🎲 **Интерактивные мини-игры** — Камень-Ножницы-Бумага, Угадай число, Викторины, Кости, Казино, Дартс, Баскетбол!\n` +
+    `• 🔮 **Магический шар предсказаний** — ответит на любой твой вопрос (или просто начни сообщение с «Шар ...?»).\n` +
+    `• 💡 **Удивительные факты и мотивация** — поделюсь интересными знаниями и подниму настрой.\n` +
+    `• 🎭 **Генератор отмазок** — на случай, если нужно оправдание на все случаи жизни.\n` +
+    `• 🪙 **Орёл или Решка** — помогу принять быстрое решение!\n\n` +
+    `Выбирай действие на клавиатуре внизу или просто пиши мне в чат, как живому собеседнику! 🚀`;
 
   await bot.sendMessage(chatId, welcomeText, {
     parse_mode: "Markdown",
@@ -94,29 +80,27 @@ bot.onText(/\/start/, async (msg) => {
 bot.onText(/\/help/, async (msg) => {
   const chatId = msg.chat.id;
   const helpText =
-    `📖 **Справка по командам FlipClip:**\n\n` +
-    `🎓 **Клауд (Дневник Академии ТОП):**\n` +
-    `• \`/schedule\` — пары на сегодня\n` +
-    `• \`/hw\` — текущие домашние задания\n` +
-    `• \`/marks\` — успеваемость и оценки\n` +
-    `• \`/coins\` — баланс коинов и кристаллов\n` +
-    `• \`/profile\` — профиль студента\n` +
-    `• \`/login логин пароль\` — вход в свой реальный Клауд\n` +
-    `• \`/demo\` — переключиться в демо-режим\n` +
-    `• \`/logout\` — выйти из аккаунта\n\n` +
-    `🎲 **Приколы и игры:**\n` +
-    `• \`/game\` — меню мини-игр\n` +
-    `• \`/ball вопрос\` — магический шар предсказаний\n` +
-    `• \`/excuse\` — эпичная отмазка перед преподавателем\n` +
-    `• \`/joke\` — IT-анекдот\n` +
-    `• \`/quiz\` — IT-викторина\n` +
-    `• \`/dice\` — бросить интерактивный кубик\n\n` +
-    `💬 Или просто напиши мне любой текст, я отвечу как живой собеседник!`;
+    `📖 **Справка по командам бота:**\n\n` +
+    `🎮 **Игры и развлечения:**\n` +
+    `• \`/game\` — меню всех мини-игр\n` +
+    `• \`/rps\` — Камень-Ножницы-Бумага\n` +
+    `• \`/guess\` — игра «Угадай число»\n` +
+    `• \`/quiz\` — интересная викторина\n` +
+    `• \`/dice\` — бросить игральный кубик\n` +
+    `• \`/coin\` — подбросить монетку (Орёл/Решка)\n\n` +
+    `🔮 **Фишки и приколы:**\n` +
+    `• \`/ball вопрос\` — магический шар судьбы\n` +
+    `• \`/joke\` — смешной анекдот или шутка\n` +
+    `• \`/fact\` — необычный познавательный факт\n` +
+    `• \`/excuse\` — эпичная отмазка\n` +
+    `• \`/motivation\` — порция мотивации\n\n` +
+    `💬 **Общение:**\n` +
+    `Просто напиши мне любой текст, задай вопрос или спроси «Что лучше: чай или кофе?» — я с радостью отвечу!`;
 
   await bot.sendMessage(chatId, helpText, { parse_mode: "Markdown" });
 });
 
-// Меню игр и развлечений
+// Меню мини-игр
 async function sendGamesMenu(chatId) {
   const inlineKeyboard = {
     reply_markup: {
@@ -126,7 +110,7 @@ async function sendGamesMenu(chatId) {
         ],
         [
           { text: "🔢 Угадай число (1-100)", callback_data: "game_guess" },
-          { text: "🧠 IT-Викторина", callback_data: "game_quiz" }
+          { text: "🧠 Интеллект-Викторина", callback_data: "game_quiz" }
         ],
         [
           { text: "🎲 Бросить кубик", callback_data: "game_dice" },
@@ -135,6 +119,9 @@ async function sendGamesMenu(chatId) {
         [
           { text: "🎯 Дартс", callback_data: "game_darts" },
           { text: "🏀 Баскетбол", callback_data: "game_basket" }
+        ],
+        [
+          { text: "⚽ Футбол", callback_data: "game_football" }
         ]
       ]
     }
@@ -142,7 +129,7 @@ async function sendGamesMenu(chatId) {
 
   await bot.sendMessage(
     chatId,
-    `🎮 **Игровой зал FlipClip!**\nВыбирай игру по вкусу и проверь свою удачу:`,
+    `🎮 **Игровой зал!**\nВыбирай игру и проверь свою удачу:`,
     { parse_mode: "Markdown", ...inlineKeyboard }
   );
 }
@@ -166,7 +153,7 @@ async function startRPS(chatId) {
   });
 }
 
-// Запуск Угадай число
+// Запуск игры "Угадай число"
 function startGuessNumber(chatId) {
   const session = getSession(chatId);
   const target = Math.floor(Math.random() * 100) + 1;
@@ -178,11 +165,11 @@ function startGuessNumber(chatId) {
 
   bot.sendMessage(
     chatId,
-    `🔢 **Я загадал число от 1 до 100!**\nПопробуй угадать его за наименьшее число попыток. Просто пиши числа прямо сюда в чат:`
+    `🔢 **Я загадал число от 1 до 100!**\nПопробуй угадать его. Просто пиши числа прямо сюда в чат!`
   );
 }
 
-// Запуск IT-викторины
+// Запуск Викторины
 async function startQuiz(chatId) {
   const q = getRandomItem(quizQuestions);
   const session = getSession(chatId);
@@ -197,9 +184,20 @@ async function startQuiz(chatId) {
     callback_data: `quiz_${idx}`
   }]);
 
-  await bot.sendMessage(chatId, `🧠 **IT-Викторина:**\n\n${q.question}`, {
+  await bot.sendMessage(chatId, `🧠 **Вопрос викторины:**\n\n${q.question}`, {
     reply_markup: { inline_keyboard: buttons }
   });
+}
+
+// Подбросить монетку
+async function flipCoin(chatId) {
+  const isHeads = Math.random() > 0.5;
+  const result = isHeads ? "🦅 **ОРЁЛ!**" : "🪙 **РЕШКА!**";
+  bot.sendChatAction(chatId, "typing");
+  await bot.sendMessage(chatId, "🪙 Монетка крутится в воздухе...");
+  setTimeout(() => {
+    bot.sendMessage(chatId, `Выпало: ${result}`, { parse_mode: "Markdown" });
+  }, 1000);
 }
 
 // Обработка inline кнопок (Callback Queries)
@@ -210,7 +208,7 @@ bot.on("callback_query", async (query) => {
 
   await bot.answerCallbackQuery(query.id);
 
-  // 1. Меню игр
+  // Меню игр
   if (data === "game_rps") {
     return startRPS(chatId);
   }
@@ -224,7 +222,7 @@ bot.on("callback_query", async (query) => {
     const diceMsg = await bot.sendDice(chatId, { emoji: "🎲" });
     const val = diceMsg.dice.value;
     setTimeout(() => {
-      bot.sendMessage(chatId, val >= 4 ? `🎉 Выпало **${val}**! Отличный бросок, удача с тобой!` : `🎲 Выпало **${val}**. В следующий раз повезёт больше!`, { parse_mode: "Markdown" });
+      bot.sendMessage(chatId, val >= 4 ? `🎉 Выпало **${val}**! Отличный бросок, удача на твоей стороне!` : `🎲 Выпало **${val}**. В следующий раз повезёт больше!`, { parse_mode: "Markdown" });
     }, 1500);
     return;
   }
@@ -240,7 +238,7 @@ bot.on("callback_query", async (query) => {
     const dartMsg = await bot.sendDice(chatId, { emoji: "🎯" });
     const val = dartMsg.dice.value;
     setTimeout(() => {
-      bot.sendMessage(chatId, val === 6 ? `🎯 ТОЧНО В ЯБЛОЧКО! 100 баллов из 100!` : `🎯 Очков выбито: ${val}. Меткость тренируется практикой!`);
+      bot.sendMessage(chatId, val === 6 ? `🎯 ТОЧНО В ЯБЛОЧКО! 100 баллов из 100!` : `🎯 Очков выбито: ${val}. Отличная попытка!`);
     }, 1500);
     return;
   }
@@ -248,12 +246,20 @@ bot.on("callback_query", async (query) => {
     const bMsg = await bot.sendDice(chatId, { emoji: "🏀" });
     const val = bMsg.dice.value;
     setTimeout(() => {
-      bot.sendMessage(chatId, val >= 4 ? `🏀 ЧИСТЫЙ ТРЁХОЧКОВЫЙ! Красивый бросок!` : `🏀 Мимо кольца! Попробуй еще!`);
+      bot.sendMessage(chatId, val >= 4 ? `🏀 ТОЧНОЕ ПОПАДАНИЕ В КОРЗИНУ! Красивый бросок!` : `🏀 Мимо кольца! Попробуй еще!`);
+    }, 1500);
+    return;
+  }
+  if (data === "game_football") {
+    const fMsg = await bot.sendDice(chatId, { emoji: "⚽" });
+    const val = fMsg.dice.value;
+    setTimeout(() => {
+      bot.sendMessage(chatId, val >= 3 ? `⚽ ГООООООЛ! Мяч прямо в девятку! 🥅🔥` : `⚽ Вратарь отбил мяч! Ударь еще раз!`);
     }, 1500);
     return;
   }
 
-  // 2. Камень-ножницы-бумага
+  // Камень-ножницы-бумага
   if (data.startsWith("rps_")) {
     const userChoice = data.replace("rps_", "");
     const choices = ["rock", "scissors", "paper"];
@@ -271,7 +277,7 @@ bot.on("callback_query", async (query) => {
     ) {
       result = "🎉 **ТЫ ПОБЕДИЛ!** Отличная интуиция!";
     } else {
-      result = "🤖 **Я победил!** Мой искусственный интеллект просчитал твой ход!";
+      result = "🤖 **Я победил!** Мой алгоритм прочитал твой ход!";
     }
 
     return bot.sendMessage(
@@ -281,11 +287,11 @@ bot.on("callback_query", async (query) => {
     );
   }
 
-  // 3. Ответ на викторину
+  // Викторина
   if (data.startsWith("quiz_")) {
     const chosenIndex = parseInt(data.replace("quiz_", ""), 10);
     if (!session.gameState || session.gameState.type !== "quiz") {
-      return bot.sendMessage(chatId, "Этот вопрос уже неактивен. Запусти новый через /quiz!");
+      return bot.sendMessage(chatId, "Этот вопрос уже неактивен. Начни новый через команду /quiz!");
     }
 
     const { correctIndex, explanation } = session.gameState;
@@ -306,165 +312,6 @@ bot.on("callback_query", async (query) => {
     }
   }
 });
-
-// Команда /schedule или кнопка "📅 Расписание"
-async function handleSchedule(chatId) {
-  const session = getSession(chatId);
-
-  if (!session.token) {
-    // Показываем демо-расписание
-    const schedule = demoData.scheduleToday;
-    let text = `📅 **Расписание занятий на сегодня (Демо):**\n\n`;
-    schedule.forEach((p) => {
-      text += `⏱ **${p.number} пара (${p.time})**\n`;
-      text += `📖 **${p.subject}**\n`;
-      text += `👨‍🏫 Преподаватель: ${p.teacher}\n`;
-      text += `🚪 ${p.room} • ${p.type}\n\n`;
-    });
-    text += `💡 *Чтобы видеть ваши личные пары, авторизуйтесь через «🔑 Войти в Клауд»!*`;
-    return bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
-  }
-
-  // Запрос в реальный API Клауда
-  bot.sendChatAction(chatId, "typing");
-  const res = await getSchedule(session.token);
-  if (!res.success || !res.pairs.length) {
-    return bot.sendMessage(
-      chatId,
-      `📅 **На сегодня занятий нет!** Можно отдохнуть или дописать домашку. 🎉`
-    );
-  }
-
-  let text = `📅 **Ваше расписание на сегодня:**\n\n`;
-  res.pairs.forEach((p, idx) => {
-    const num = p.lesson || p.number || (idx + 1);
-    const time = (p.started_at && p.finished_at) ? `${p.started_at} - ${p.finished_at}` : (p.time || "");
-    text += `⏱ **${num} пара ${time ? `(${time})` : ""}**\n`;
-    text += `📖 **${p.subject_name || p.subject || "Предмет"}**\n`;
-    if (p.teacher_name || p.teacher) text += `👨‍🏫 Преподаватель: ${p.teacher_name || p.teacher}\n`;
-    if (p.room_name || p.room) text += `🚪 ${p.room_name || p.room}\n`;
-    text += `\n`;
-  });
-
-  return bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
-}
-
-// Команда /hw или кнопка "📚 Домашка"
-async function handleHomework(chatId) {
-  const session = getSession(chatId);
-
-  if (!session.token) {
-    const hwList = demoData.homeworks;
-    let text = `📚 **Домашние задания (Демо-режим):**\n\n`;
-    hwList.forEach((hw, i) => {
-      const statusIcon = hw.status === "submitted" ? "✅" : "⏳";
-      text += `${statusIcon} **${i + 1}. ${hw.subject}**\n`;
-      text += `📝 Тема: ${hw.theme}\n`;
-      text += `⏰ Дедлайн: ${hw.deadline}\n\n`;
-    });
-    text += `💡 *Авторизуйтесь через «🔑 Войти в Клауд», чтобы видеть ваши реальные ДЗ из MyStat!*`;
-    return bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
-  }
-
-  bot.sendChatAction(chatId, "typing");
-  const res = await getHomeworks(session.token);
-  if (!res.success || !res.homeworks.length) {
-    return bot.sendMessage(chatId, `📚 **Все домашние задания выполнены!** Красава! 🥳`);
-  }
-
-  let text = `📚 **Ваши домашние задания из Клауда:**\n\n`;
-  res.homeworks.slice(0, 5).forEach((hw, i) => {
-    text += `📌 **${i + 1}. ${hw.subject_name || "Предмет"}**\n`;
-    text += `📝 ${hw.theme || hw.comment || "Без описания"}\n`;
-    if (hw.completion_date) text += `⏰ Срок: ${hw.completion_date}\n`;
-    text += `\n`;
-  });
-
-  return bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
-}
-
-// Команда /marks или кнопка "🏆 Оценки"
-async function handleMarks(chatId) {
-  const session = getSession(chatId);
-
-  if (!session.token) {
-    const marks = demoData.marks;
-    let text = `🏆 **Успеваемость и оценки (Демо):**\n\n`;
-    marks.forEach((m) => {
-      text += `⭐️ **${m.mark}/12** — ${m.subject} (${m.type}, ${m.date})\n`;
-    });
-    text += `\n📊 **Средний балл:** 11.8 / 12 (Отличник) 🥇\n`;
-    text += `💡 *Для реальных оценок выполните «🔑 Войти в Клауд».*`;
-    return bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
-  }
-
-  bot.sendChatAction(chatId, "typing");
-  const res = await getMarks(session.token);
-  if (!res.success || !res.marks.length) {
-    return bot.sendMessage(chatId, `🏆 Оценок пока не найдено.`);
-  }
-
-  let text = `🏆 **Последние оценки из Клауда:**\n\n`;
-  res.marks.slice(0, 8).forEach((m) => {
-    const val = m.mark || m.value || "—";
-    text += `⭐️ **${val}/12** — ${m.subject_name || m.lesson_name || "Дисциплина"}\n`;
-  });
-
-  return bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
-}
-
-// Команда /coins или кнопка "💰 Баланс коинов"
-async function handleCoins(chatId) {
-  const session = getSession(chatId);
-
-  if (!session.token) {
-    const p = demoData.profile;
-    const text = 
-      `💰 **Баланс MyStat / Cloud (Демо):**\n\n` +
-      `🪙 **StepCoins:** ${p.coins} коинов\n` +
-      `💎 **Кристаллы:** ${p.gems} кристаллов\n` +
-      `🎖 **Уровень:** ${p.level} (${p.levelTitle})\n` +
-      `🥇 **Место в группе:** #${p.rank}\n\n` +
-      `💡 *Войдите в свой аккаунт, чтобы проверить актуальный баланс!*`;
-    return bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
-  }
-
-  bot.sendChatAction(chatId, "typing");
-  const res = await getUserProfile(session.token);
-  if (!res.success) {
-    return bot.sendMessage(chatId, `Не удалось получить данные о коинах: ${res.error}`);
-  }
-
-  const p = res.profile;
-  const text = 
-    `💰 **Твой баланс в Академии ТОП:**\n\n` +
-    `🪙 **StepCoins:** ${p.coins} коинов\n` +
-    `💎 **Кристаллы:** ${p.gems} кристаллов\n` +
-    `📊 **Средний балл:** ${p.averageGrade}\n` +
-    `📈 **Посещаемость:** ${p.attendance}%\n\n` +
-    `Продолжай в том же духе! 🚀`;
-
-  return bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
-}
-
-// Профиль студента
-async function handleProfile(chatId) {
-  const session = getSession(chatId);
-  const p = session.profile || demoData.profile;
-  const isDemo = !session.token;
-
-  const text =
-    `👤 **Профиль студента ${isDemo ? "(Демо)" : ""}:**\n\n` +
-    `📛 **ФИО:** ${p.fullName}\n` +
-    `👥 **Группа:** ${p.group}\n` +
-    `🏢 **Филиал:** ${p.branch}\n` +
-    `🪙 **StepCoins:** ${p.coins} | 💎 **Кристаллы:** ${p.gems}\n` +
-    `📊 **Средний балл:** ${p.averageGrade || 11.5} / 12\n` +
-    `🔑 **Статус:** ${isDemo ? "Демо-режим" : "✅ Подключен к Клауду"}\n\n` +
-    (isDemo ? "💡 *Нажми «🔑 Войти в Клауд», чтобы подключить свой личный аккаунт!*" : "");
-
-  return bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
-}
 
 // Обработка текстовых сообщений
 bot.on("message", async (msg) => {
@@ -498,66 +345,32 @@ bot.on("message", async (msg) => {
     }
   }
 
-  // 2. Проверяем режим ожидания логина
-  if (session.waitingForLogin) {
-    session.waitingForLogin = false;
-    const parts = text.trim().split(/\s+/);
-    if (parts.length >= 2) {
-      const username = parts[0];
-      const password = parts.slice(1).join(" ");
-      bot.sendChatAction(chatId, "typing");
-      bot.sendMessage(chatId, "⏳ Подключаюсь к Клауду Академии ТОП...");
-
-      const loginRes = await loginToCloud(username, password);
-      if (loginRes.success) {
-        session.token = loginRes.token;
-        session.profile = loginRes.profile;
-        session.isDemo = false;
-
-        return bot.sendMessage(
-          chatId,
-          `✅ **Успешный вход в Клауд!**\n\nДобро пожаловать, **${loginRes.profile.fullName}**!\nГруппа: **${loginRes.profile.group}**\nФилиал: **${loginRes.profile.branch}**\n\nТеперь ты можешь смотреть свои реальные пары, оценки и домашки через кнопки меню! 🚀`,
-          { parse_mode: "Markdown", ...mainKeyboard }
-        );
-      } else {
-        return bot.sendMessage(
-          chatId,
-          `❌ **Ошибка авторизации:** ${loginRes.error}\n\nПроверь логин и пароль от MyStat / Cloud и попробуй снова через команду:\n\`/login логин пароль\`\n(Или продолжай пользоваться Демо-режимом)`,
-          { parse_mode: "Markdown" }
-        );
-      }
-    } else {
-      return bot.sendMessage(
-        chatId,
-        `⚠️ Нужно указать логин и пароль через пробел, например:\n\`ivanov_i 123456\`\nЛибо отправь команду:\n\`/login ivanov_i 123456\``,
-        { parse_mode: "Markdown" }
-      );
-    }
-  }
-
-  // 3. Обработка кнопок главного меню
-  if (text === "📅 Расписание" || text === "/schedule") {
-    return handleSchedule(chatId);
-  }
-
-  if (text === "📚 Домашка" || text === "/hw") {
-    return handleHomework(chatId);
-  }
-
-  if (text === "🏆 Оценки" || text === "/marks") {
-    return handleMarks(chatId);
-  }
-
-  if (text === "💰 Баланс коинов" || text === "/coins") {
-    return handleCoins(chatId);
-  }
-
-  if (text === "👤 Мой профиль" || text === "/profile") {
-    return handleProfile(chatId);
+  // 2. Обработка кнопок главного меню
+  if (text === "💬 Поболтать") {
+    return bot.sendMessage(
+      chatId,
+      "Я всегда готов поболтать! Расскажи, как твои дела, что интересного произошло за сегодня или о чём думаешь? Я внимательно слушаю! 😊"
+    );
   }
 
   if (text === "🎲 Игры и развлечения" || text === "/game") {
     return sendGamesMenu(chatId);
+  }
+
+  if (text === "/rps") {
+    return startRPS(chatId);
+  }
+
+  if (text === "/guess") {
+    return startGuessNumber(chatId);
+  }
+
+  if (text === "/quiz") {
+    return startQuiz(chatId);
+  }
+
+  if (text === "🪙 Орёл или Решка" || text === "/coin") {
+    return flipCoin(chatId);
   }
 
   if (text === "🔮 Шар судьбы" || text.startsWith("/ball")) {
@@ -568,73 +381,36 @@ bot.on("message", async (msg) => {
     }
     return bot.sendMessage(
       chatId,
-      `🔮 **Шар судьбы ждёт твоего вопроса!**\nСпроси о чём угодно в чате, например:\n«*Шар, сдам ли я экзамен?*» или нажми на шар снова!\n\n${answer}`,
+      `🔮 **Магический шар судьбы ждёт твоего вопроса!**\nСпроси о чём угодно в чате, например:\n«*Шар, повезёт ли мне сегодня?*» или нажми на шар ещё раз!\n\n${answer}`,
       { parse_mode: "Markdown" }
     );
   }
 
-  if (text === "🎭 Отмазка для препода" || text === "/excuse") {
+  if (text === "💡 Интересный факт" || text === "/fact") {
+    const fact = getRandomItem(randomFacts);
+    return bot.sendMessage(chatId, `💡 **Знаете ли вы?**\n\n${fact}`, { parse_mode: "Markdown" });
+  }
+
+  if (text === "🎭 Генератор отмазок" || text === "/excuse") {
     const excuse = getRandomItem(excuses);
     return bot.sendMessage(
       chatId,
-      `🎭 **Отмазка от FlipClip:**\n\n«${excuse}»\n\n*Используй с уверенным лицом!* 😎`,
+      `🎭 **Отмазка от бота:**\n\n«${excuse}»\n\n*Используй с невозмутимым лицом!* 😎`,
       { parse_mode: "Markdown" }
     );
   }
 
-  if (text === "💡 Мотивация / Шутка" || text === "/joke") {
-    const item = Math.random() > 0.5 ? getRandomItem(dailyMotivations) : getRandomItem(itJokes);
-    return bot.sendMessage(chatId, item, { parse_mode: "Markdown" });
+  if (text === "😂 Шутка / Анекдот" || text === "/joke") {
+    const joke = getRandomItem(jokes);
+    return bot.sendMessage(chatId, joke, { parse_mode: "Markdown" });
   }
 
-  if (text === "🔑 Войти в Клауд") {
-    session.waitingForLogin = true;
-    return bot.sendMessage(
-      chatId,
-      `🔑 **Вход в Cloud / MyStat Академии ТОП**\n\nПришли свой **логин** и **пароль** одним сообщением через пробел:\nПример: \`ivanov_i MySecretPass123\`\n\n🔒 *Бот безопасно авторизуется через официальный шлюз по ключу приложения*\n\nДля отмены напиши «отмена».`,
-      { parse_mode: "Markdown" }
-    );
+  if (text === "🌟 Мотивация" || text === "/motivation") {
+    const mot = getRandomItem(dailyMotivations);
+    return bot.sendMessage(chatId, `🌟 **Мотивация для тебя:**\n\n${mot}`, { parse_mode: "Markdown" });
   }
 
-  if (text.startsWith("/login")) {
-    const parts = text.replace("/login", "").trim().split(/\s+/);
-    if (parts.length >= 2) {
-      const [username, password] = parts;
-      bot.sendChatAction(chatId, "typing");
-      bot.sendMessage(chatId, "⏳ Авторизуюсь в Клауде...");
-
-      const loginRes = await loginToCloud(username, password);
-      if (loginRes.success) {
-        session.token = loginRes.token;
-        session.profile = loginRes.profile;
-        session.isDemo = false;
-        return bot.sendMessage(
-          chatId,
-          `✅ **Авторизация успешна!** Привет, ${loginRes.profile.fullName}!`,
-          { parse_mode: "Markdown", ...mainKeyboard }
-        );
-      } else {
-        return bot.sendMessage(chatId, `❌ ${loginRes.error}`);
-      }
-    } else {
-      return bot.sendMessage(chatId, `Использование: \`/login логин пароль\``, { parse_mode: "Markdown" });
-    }
-  }
-
-  if (text === "/demo") {
-    session.token = null;
-    session.isDemo = true;
-    return bot.sendMessage(chatId, "✨ Включен демонстрационный режим Клауда!", mainKeyboard);
-  }
-
-  if (text === "/logout") {
-    session.token = null;
-    session.profile = null;
-    session.isDemo = true;
-    return bot.sendMessage(chatId, "🚪 Вы вышли из аккаунта. Включен Демо-режим.", mainKeyboard);
-  }
-
-  // 4. Обычный разговорный диалог с ботом
+  // 3. Обычный разговорный диалог с ботом
   bot.sendChatAction(chatId, "typing");
   const response = await generateChatResponse(chatId, text);
   return bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
@@ -645,4 +421,4 @@ bot.on("polling_error", (error) => {
   console.error("[Polling Error]:", error.code, error.message);
 });
 
-console.log("✅ FlipClip Telegram Bot успешно запущен и ожидает сообщений!");
+console.log("✅ Разговорный Telegram-бот успешно запущен и ожидает сообщений!");
