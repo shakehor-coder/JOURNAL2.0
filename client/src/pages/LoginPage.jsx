@@ -28,6 +28,7 @@ export const LoginPage = () => {
   // Credentials Form
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
   // Custom Name Form
@@ -115,15 +116,18 @@ export const LoginPage = () => {
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
     if (!username.trim() || !password.trim()) {
-      setError("Пожалуйста, введите логин и пароль");
+      setError("Пожалуйста, введите логин/никнейм и пароль");
       return;
     }
     setLoading(true);
     setError("");
-    const result = await loginWithCredentials(username.trim(), password.trim());
+    const result = await loginWithCredentials(username.trim(), password.trim(), {
+      fullName: fullName.trim() || username.trim(),
+      group: customGroup.trim() || "ВЕБ-22/3"
+    });
     setLoading(false);
     if (!result.success) {
-      setError(result.error || "Неверный логин или пароль студента Академии ТОП");
+      setError(result.error || "Не удалось войти в дневник");
     }
   };
 
@@ -233,7 +237,7 @@ export const LoginPage = () => {
                   }`}
                 >
                   <KeyRound className="w-3.5 h-3.5" />
-                  <span>MyStat</span>
+                  <span>Ник и пароль</span>
                 </button>
 
                 <button
@@ -284,16 +288,16 @@ export const LoginPage = () => {
                 </div>
               )}
 
-              {/* TAB 1: MYSTAT CLOUD LOGIN */}
+              {/* TAB 1: NICKNAME & PASSWORD / MYSTAT LOGIN */}
               {activeTab === "password" && (
                 <form onSubmit={handlePasswordSubmit} className="space-y-4">
-                  <div className="p-3 rounded-[6px] bg-surface-2 border-2 border-ink/20 text-xs text-ink-muted leading-relaxed">
-                    🔐 Вход через официальный сервер Академии ТОП (<span className="text-ink font-mono font-bold">msapi.top-academy.ru</span>). Загрузит настоящее имя, оценки и расписание.
+                  <div className="p-3 rounded-[6px] bg-surface-2 border-2 border-ink/20 text-xs text-ink leading-relaxed">
+                    ✨ Вход и регистрация по никнейму и паролю. Если у вас есть аккаунт MyStat, данные синхронизируются автоматически. Профиль открывается под <b>вашим именем</b>.
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-ink mb-1.5">
-                      Логин студента в Академии ТОП
+                      Никнейм или логин студента
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-ink-muted">
@@ -303,7 +307,7 @@ export const LoginPage = () => {
                         type="text"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
-                        placeholder="st-12345 или email"
+                        placeholder="Например: shakehor, student или логин MyStat"
                         className="w-full pl-9 pr-3 py-2.5 rounded-[6px] bg-paper border-2 border-ink text-ink text-xs font-mono placeholder:text-ink-muted/50 focus:outline-none focus:border-accent"
                         required
                       />
@@ -312,7 +316,25 @@ export const LoginPage = () => {
 
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-ink mb-1.5">
-                      Пароль от дневника
+                      Ваше реальное имя или ник в дневнике (по желанию)
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-ink-muted">
+                        <UserCheck className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="text"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder="Как вас зовут (например: Иван Иванов или ник)"
+                        className="w-full pl-9 pr-3 py-2.5 rounded-[6px] bg-paper border-2 border-ink text-ink text-xs placeholder:text-ink-muted/50 focus:outline-none focus:border-accent"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-ink mb-1.5">
+                      Пароль
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-ink-muted">

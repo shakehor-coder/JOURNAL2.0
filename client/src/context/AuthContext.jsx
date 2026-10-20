@@ -41,12 +41,12 @@ export const AuthProvider = ({ children }) => {
     }
   }, [darkMode]);
 
-  const loginWithCredentials = async (username, password) => {
+  const loginWithCredentials = async (username, password, extraData = {}) => {
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username, password, ...extraData })
       });
       const data = await res.json();
       if (data.success) {
@@ -54,9 +54,30 @@ export const AuthProvider = ({ children }) => {
         setToken(data.token);
         localStorage.setItem("top_journal_user", JSON.stringify(data.user));
         localStorage.setItem("top_journal_token", data.token);
-        return { success: true };
+        return { success: true, user: data.user };
       }
       return { success: false, error: data.error || "Ошибка входа" };
+    } catch (err) {
+      return { success: false, error: "Не удалось подключиться к серверу" };
+    }
+  };
+
+  const registerStudent = async (formData) => {
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setUser(data.user);
+        setToken(data.token);
+        localStorage.setItem("top_journal_user", JSON.stringify(data.user));
+        localStorage.setItem("top_journal_token", data.token);
+        return { success: true, user: data.user };
+      }
+      return { success: false, error: data.error || "Ошибка регистрации" };
     } catch (err) {
       return { success: false, error: "Не удалось подключиться к серверу" };
     }
@@ -173,6 +194,7 @@ export const AuthProvider = ({ children }) => {
         toggleDarkMode,
         socket,
         loginWithCredentials,
+        registerStudent,
         loginWithToken,
         loginWithCustomProfile,
         loginAsDemo,

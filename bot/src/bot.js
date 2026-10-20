@@ -9,7 +9,7 @@ import {
   quizQuestions,
   getRandomItem
 } from "./funFeatures.js";
-import { generateChatResponse } from "./conversational.js";
+import { generateChatResponse, userAiKeys } from "./conversational.js";
 
 dotenv.config();
 
@@ -408,6 +408,23 @@ bot.on("message", async (msg) => {
   if (text === "🌟 Мотивация" || text === "/motivation") {
     const mot = getRandomItem(dailyMotivations);
     return bot.sendMessage(chatId, `🌟 **Мотивация для тебя:**\n\n${mot}`, { parse_mode: "Markdown" });
+  }
+
+  if (text.startsWith("/set_key")) {
+    const key = text.replace("/set_key", "").trim();
+    if (!key) {
+      return bot.sendMessage(
+        chatId,
+        `💡 **Как подключить нейросеть:**\nОтправь команду со своим API-ключом:\n\`/set_key <твой_ключ>\`\n\nПодходят ключи:\n• **Groq** (\`gsk_...\`) — бесплатный, сверхбыстрый (Llama 3.3 70B)\n• **OpenAI** (\`sk-...\`)\n• **Anthropic Claude** (\`sk-ant-...\`)`,
+        { parse_mode: "Markdown" }
+      );
+    }
+    userAiKeys.set(chatId, key);
+    return bot.sendMessage(
+      chatId,
+      `✅ **API-ключ нейросети сохранён!**\nТеперь бот отвечает напрямую через мощную модель без ограничений! 🚀`,
+      { parse_mode: "Markdown" }
+    );
   }
 
   // 3. Обычный разговорный диалог с ботом

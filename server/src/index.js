@@ -38,6 +38,7 @@ app.use(express.json({ limit: "10mb" }));
 // In-Memory Storage & State
 // ==========================================
 const qrSessions = new Map(); // sessionId -> { status: 'pending'|'approved', user, expiresAt }
+const registeredUsers = new Map(); // username.toLowerCase() -> user profile
 let activeProfile = { ...mockStudentProfile };
 let activeStudents = [...mockStudentsList];
 let activeSchedule = [...mockSchedule];
@@ -153,12 +154,57 @@ app.post("/api/auth/qr/approve", (req, res) => {
 // ==========================================
 // 2. Authentication & Journal API Proxy
 // ==========================================
+app.post("/api/auth/register", (req, res) => {
+  const { username, password, fullName, group, branch } = req.body;
+  if (!username || !username.trim() || !password || !password.trim()) {
+    return res.status(400).json({ success: false, error: "Укажите никнейм/логин и пароль" });
+  }
+
+  const normalized = username.trim().toLowerCase();
+  const displayName = fullName?.trim() || username.trim();
+
+  const newStudent = {
+    ...mockStudentProfile,
+    id: "std-" + crypto.randomUUID().slice(0, 8),
+    username: username.trim(),
+    fullName: displayName,
+    email: `${username.trim()}@student.top-academy.ru`,
+    group: group?.trim() || "ВЕБ-22/3 (Программирование)",
+    branch: branch?.trim() || "Центральный филиал",
+    avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(username.trim())}`,
+    coins: 600,
+    gems: 150,
+    level: 6,
+    levelTitle: "Студент ТОП",
+    averageGrade: 11.5,
+    attendancePercentage: 100,
+    isDemo: false
+  };
+
+  registeredUsers.set(normalized, { ...newStudent, password: password.trim() });
+  activeProfile = newStudent;
+
+  const idx = activeStudents.findIndex((s) => s.username?.toLowerCase() === normalized);
+  if (idx !== -1) {
+    activeStudents[idx] = newStudent;
+  } else {
+    activeStudents.unshift(newStudent);
+  }
+
+  return res.json({
+    success: true,
+    token: "top-local-jwt-" + Date.now(),
+    user: newStudent,
+    message: `Аккаунт ${displayName} успешно создан!`
+  });
+});
+
 app.post("/api/auth/login", async (req, res) => {
-  const { username, password, token, isDemo } = req.body;
+  const { username, password, token, isDemo, fullName, group, branch, isRegister } = req.body;
 
   // 1. Explicit demo login
   if (isDemo || username === "demo_student" || username === "demo") {
-    activeProfile = { ...activeProfile, isDemo: true };
+    activeProfile = { ...mockStudentProfile, isDemo: true };
     return res.json({
       success: true,
       token: "demo-jwt-token-active",
@@ -199,8 +245,24 @@ app.post("/api/auth/login", async (req, res) => {
     });
   }
 
-  // 3. Live credentials proxy login to Journal TOP Academy API
+  // 3. Check registered local users first
   if (username && password) {
+    const normalized = username.trim().toLowerCase();
+    if (registeredUsers.has(normalized)) {
+      const existing = registeredUsers.get(normalized);
+      if (existing.password === password.trim()) {
+        activeProfile = { ...existing };
+        delete activeProfile.password;
+        return res.json({
+          success: true,
+          token: "top-local-jwt-" + Date.now(),
+          user: activeProfile,
+          source: "local_registered"
+        });
+      }
+    }
+
+    // Attempt live credentials proxy login to Journal TOP Academy API
     try {
       console.log(`[API PROXY] Authenticating with ${topAcademyApiBase}/auth/login (username: ${username}, AppKey: ${applicationKey.slice(0, 8)}...)`);
       const topResponse = await axios.post(
@@ -217,7 +279,7 @@ app.post("/api/auth/login", async (req, res) => {
             "Origin": "https://journal.top-academy.ru",
             "Referer": "https://journal.top-academy.ru/"
           },
-          timeout: 10000
+          timeout: 6000
         }
       );
 
@@ -235,7 +297,7 @@ app.post("/api/auth/login", async (req, res) => {
           if (profileRes.data) {
             activeProfile = {
               ...activeProfile,
-              fullName: profileRes.data.full_name || profileRes.data.name || activeProfile.fullName,
+              fullName: profileRes.data.full_name || profileRes.data.name || fullName?.trim() || username.trim(),
               group: profileRes.data.group_name || activeProfile.group,
               branch: profileRes.data.branch_name || activeProfile.branch,
               avatar: profileRes.data.small_avatar || activeProfile.avatar,
@@ -243,7 +305,8 @@ app.post("/api/auth/login", async (req, res) => {
               gems: profileRes.data.gaming_points?.crystals ?? activeProfile.gems,
               isDemo: false
             };
-            const idx = activeStudents.findIndex(s => s.id === activeProfile.id);
+            registeredUsers.set(normalized, { ...activeProfile, password: password.trim() });
+            const idx = activeStudents.findIndex((s) => s.id === activeProfile.id);
             if (idx !== -1) {
               activeStudents[idx] = { ...activeStudents[idx], ...activeProfile };
             }
@@ -291,19 +354,43 @@ app.post("/api/auth/login", async (req, res) => {
         });
       }
     } catch (err) {
-      console.log("[API PROXY] TOP Academy live login error:", err.response?.data || err.message);
-      let errorMsg = "Неверный логин или пароль студента Академии ТОП";
-      if (Array.isArray(err.response?.data) && err.response?.data[0]?.message) {
-        errorMsg = err.response.data[0].message;
-      } else if (err.response?.data?.message) {
-        errorMsg = err.response.data.message;
-      } else if (err.code === "ECONNABORTED" || err.message?.includes("timeout")) {
-        errorMsg = "Сервер Академии ТОП не ответил вовремя. Попробуйте еще раз или проверьте интернет-соединение.";
+      console.log("[API PROXY] TOP Academy login not matched, creating/logging in with personal account for:", username);
+      // Fallback: Create or log into personal student account with the entered nickname/name!
+      const displayName = fullName?.trim() || username.trim();
+      const newStudent = {
+        ...mockStudentProfile,
+        id: "std-" + crypto.randomUUID().slice(0, 8),
+        username: username.trim(),
+        fullName: displayName,
+        email: `${username.trim()}@student.top-academy.ru`,
+        group: group?.trim() || "ВЕБ-22/3 (Программирование)",
+        branch: branch?.trim() || "Центральный филиал",
+        avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(username.trim())}`,
+        coins: 600,
+        gems: 150,
+        level: 6,
+        levelTitle: "Студент ТОП",
+        averageGrade: 11.5,
+        attendancePercentage: 100,
+        isDemo: false
+      };
+
+      registeredUsers.set(normalized, { ...newStudent, password: password.trim() });
+      activeProfile = newStudent;
+
+      const idx = activeStudents.findIndex((s) => s.username?.toLowerCase() === normalized);
+      if (idx !== -1) {
+        activeStudents[idx] = newStudent;
+      } else {
+        activeStudents.unshift(newStudent);
       }
-      return res.status(401).json({
-        success: false,
-        error: errorMsg,
-        details: err.response?.data
+
+      return res.json({
+        success: true,
+        token: "top-local-jwt-" + Date.now(),
+        user: newStudent,
+        source: "personal_account",
+        message: `Вы успешно вошли как ${displayName}!`
       });
     }
   }
@@ -311,7 +398,7 @@ app.post("/api/auth/login", async (req, res) => {
   // 4. Default: require credentials or demo flag
   res.status(400).json({
     success: false,
-    error: "Укажите логин и пароль студента или выберите демо-вход"
+    error: "Укажите логин (никнейм) и пароль"
   });
 });
 
@@ -859,6 +946,20 @@ io.on("connection", (socket) => {
     // Send existing participants list to joining socket
     const existingList = Array.from(roomParticipants.values()).filter(p => p.socketId !== socket.id);
     socket.emit("existing-participants", existingList);
+  });
+
+  socket.on("leave-call-room", ({ roomId }) => {
+    socket.leave(`call-${roomId}`);
+    if (rooms.has(roomId)) {
+      const roomParticipants = rooms.get(roomId);
+      if (roomParticipants.has(socket.id)) {
+        roomParticipants.delete(socket.id);
+        io.to(`call-${roomId}`).emit("user-left-call", { socketId: socket.id });
+        if (roomParticipants.size === 0) {
+          rooms.delete(roomId);
+        }
+      }
+    }
   });
 
   // WebRTC Signal Exchange (Offer, Answer, ICE Candidate)

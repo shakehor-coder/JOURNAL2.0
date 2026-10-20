@@ -88,7 +88,7 @@ export const ProfilePage = ({ defaultStudentId = null, onSelectClassmate = null 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          author: user?.fullName || "Алексей Смирнов"
+          author: user?.fullName || user?.username || "Студент"
         })
       });
       const data = await res.json();
@@ -121,7 +121,7 @@ export const ProfilePage = ({ defaultStudentId = null, onSelectClassmate = null 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: guestbookText.trim(),
-          author: user?.fullName || "Алексей Смирнов"
+          author: user?.fullName || user?.username || "Студент"
         })
       });
       const data = await res.json();

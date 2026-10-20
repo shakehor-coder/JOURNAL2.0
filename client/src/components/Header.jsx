@@ -31,13 +31,12 @@ export const Header = ({ onOpenProfile, pageTitle = "Главная" }) => {
 
   if (!user) return null;
 
-  const initials = user.fullName
-    ? user.fullName
-        .split(" ")
-        .map((n) => n[0])
-        .join("")
-        .slice(0, 2)
-    : "А";
+  const initials = (user.fullName || user.username || "Студент")
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
     <header className="sticky top-0 z-30 h-16 bg-paper border-b-2 border-ink px-4 md:px-6 flex items-center justify-between select-none">
@@ -124,7 +123,7 @@ export const Header = ({ onOpenProfile, pageTitle = "Главная" }) => {
           >
             <div className="hidden sm:block text-right leading-tight">
               <div className="text-[14px] font-bold text-ink truncate max-w-[140px]">
-                {user.fullName || "Алексей Смирнов"}
+                {user.fullName || user.username || "Студент"}
               </div>
               <small className="block font-mono text-[12px] text-ink-muted">
                 {user.group || "ВЕБ-22/3"}
@@ -140,7 +139,7 @@ export const Header = ({ onOpenProfile, pageTitle = "Главная" }) => {
           {profileOpen && (
             <div className="absolute right-0 mt-2 w-64 bg-surface border-2 border-ink rounded-[10px] shadow-hard z-50 overflow-hidden">
               <div className="p-3 bg-surface-2 border-b-2 border-ink">
-                <div className="font-bold text-[14px] text-ink">{user.fullName || "Алексей Смирнов"}</div>
+                <div className="font-bold text-[14px] text-ink">{user.fullName || user.username || "Студент"}</div>
                 <div className="font-mono text-[12px] text-ink-muted">{user.group || "ВЕБ-22/3"} · 4 курс</div>
               </div>
 

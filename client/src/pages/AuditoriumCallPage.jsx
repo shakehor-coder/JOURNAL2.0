@@ -15,8 +15,73 @@ import {
   Send,
   Copy,
   Check,
-  AlertCircle
+  AlertCircle,
+  School,
+  Plus,
+  X,
+  ChevronDown,
+  Sparkles,
+  ExternalLink
 } from "lucide-react";
+
+export const CALL_AUDITORIUMS = [
+  {
+    id: "web-dev-room-402",
+    name: "Ауд. 402 — Разработка веб-приложений (React / Node.js)",
+    shortName: "Ауд. 402 (Web)",
+    icon: "💻",
+    subject: "Веб-разработка",
+    desc: "React, Node.js, REST API, WebSocket"
+  },
+  {
+    id: "db-room-308",
+    name: "Ауд. 308 — Проектирование баз данных (PostgreSQL / Prisma)",
+    shortName: "Ауд. 308 (БД)",
+    icon: "🗄️",
+    subject: "Базы данных",
+    desc: "PostgreSQL, реляционные модели, SQL-запросы"
+  },
+  {
+    id: "algo-room-501",
+    name: "Ауд. 501 — Алгоритмы и структуры данных (C++ / Python)",
+    shortName: "Ауд. 501 (Алгоритмы)",
+    icon: "⚡",
+    subject: "Алгоритмы",
+    desc: "Деревья, графы, динамическое программирование"
+  },
+  {
+    id: "security-room-310",
+    name: "Ауд. 310 — Информационная безопасность (OWASP)",
+    shortName: "Ауд. 310 (ИБ)",
+    icon: "🛡️",
+    subject: "Инфобез",
+    desc: "Аутентификация, криптография, защита сети"
+  },
+  {
+    id: "english-room-204",
+    name: "Ауд. 204 — Английский язык в сфере IT",
+    shortName: "Ауд. 204 (Английский)",
+    icon: "🇬🇧",
+    subject: "Английский язык",
+    desc: "Техническая документация, диалоги, презентации"
+  },
+  {
+    id: "arch-room-402",
+    name: "Ауд. 402 — Архитектура клиент-серверных систем",
+    shortName: "Ауд. 402 (Архитектура)",
+    icon: "🏗️",
+    subject: "Архитектура ПО",
+    desc: "Микросервисы, распределенные шины, Docker"
+  },
+  {
+    id: "global-board",
+    name: "Главный зал — Общая студенческая аудитория (Все группы)",
+    shortName: "Главный зал",
+    icon: "🌐",
+    subject: "Общий поток",
+    desc: "Кураторские часы, общее общение студентов"
+  }
+];
 
 /**
  * Clean Remote Video Participant
@@ -164,6 +229,11 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
   const [callNotice, setCallNotice] = useState(null);
   const [copied, setCopied] = useState(false);
 
+  // Auditorium selection & modal
+  const [showCustomModal, setShowCustomModal] = useState(false);
+  const [customInput, setCustomInput] = useState("");
+  const [showRoomDropdown, setShowRoomDropdown] = useState(false);
+
   // Real Microphone Audio Level state (0 - 100)
   const [audioLevel, setAudioLevel] = useState(0);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -184,13 +254,43 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
   const isSpeakingRef = useRef(false);
   const screenStreamRef = useRef(null);
 
-  const userName = user?.fullName || "Алексей Смирнов";
+  const userName = user?.fullName || user?.username || "Студент";
   const userInitials = userName
     .split(" ")
     .map((n) => n[0])
     .join("")
     .slice(0, 2)
     .toUpperCase();
+
+  const currentAuditorium = CALL_AUDITORIUMS.find((a) => a.id === roomId) || {
+    id: roomId,
+    name: `Аудитория ${roomId}`,
+    shortName: roomId,
+    icon: "🏫",
+    subject: "Специальный класс",
+    desc: "Пользовательская комната"
+  };
+
+  const handleSelectRoom = (newRoomId) => {
+    if (newRoomId === roomId) return;
+    if (inCall) {
+      handleLeaveCall();
+    }
+    setLocalRoomId(newRoomId);
+    if (setRoomId) setRoomId(newRoomId);
+    setShowRoomDropdown(false);
+    const found = CALL_AUDITORIUMS.find((a) => a.id === newRoomId);
+    showNotice(`Выбрана: ${found ? found.shortName : newRoomId}`);
+  };
+
+  const handleCreateCustomRoom = (e) => {
+    e.preventDefault();
+    const clean = customInput.trim().toLowerCase().replace(/[^a-z0-9а-яё_-]/gi, "-");
+    if (!clean) return;
+    handleSelectRoom(clean);
+    setCustomInput("");
+    setShowCustomModal(false);
+  };
 
   // Call duration counter
   useEffect(() => {
@@ -555,6 +655,9 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
   // Leave Call Room
   const handleLeaveCall = () => {
     setInCall(false);
+    if (socket) {
+      socket.emit("leave-call-room", { roomId });
+    }
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach((t) => t.stop());
       screenStreamRef.current = null;
@@ -765,17 +868,75 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
               </span>
             )}
           </div>
-          <p className="text-[13px] text-ink-muted mt-0.5">
-            Аудитория: <span className="font-mono text-ink font-bold">{roomId}</span> · Реальный WebRTC Full-Duplex
-          </p>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-[13px] text-ink-muted">
+              Текущий класс:
+            </span>
+            <div className="relative inline-block">
+              <button
+                type="button"
+                onClick={() => setShowRoomDropdown(!showRoomDropdown)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[6px] bg-surface-2 border border-ink text-[12px] font-bold text-ink hover:bg-highlight hover:text-on-highlight transition-colors cursor-pointer"
+              >
+                <span>{currentAuditorium.icon}</span>
+                <span>{currentAuditorium.shortName}</span>
+                <ChevronDown className="w-3 h-3 ml-0.5" />
+              </button>
+
+              {showRoomDropdown && (
+                <div className="absolute left-0 mt-1.5 w-72 bg-surface border-2 border-ink rounded-[10px] shadow-hard z-50 p-2 space-y-1">
+                  <div className="px-2 py-1 text-[11px] font-mono text-ink-muted uppercase tracking-wider">
+                    Сменить аудиторию
+                  </div>
+                  {CALL_AUDITORIUMS.map((aud) => (
+                    <button
+                      key={aud.id}
+                      type="button"
+                      onClick={() => handleSelectRoom(aud.id)}
+                      className={`w-full flex items-center justify-between p-2 rounded-[6px] text-left text-[12px] transition-colors cursor-pointer ${
+                        aud.id === roomId
+                          ? "bg-highlight text-on-highlight font-bold"
+                          : "text-ink hover:bg-surface-2"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span>{aud.icon}</span>
+                        <span className="truncate">{aud.shortName}</span>
+                      </span>
+                      {aud.id === roomId && <Check className="w-3.5 h-3.5 shrink-0" />}
+                    </button>
+                  ))}
+                  <div className="border-t border-line my-1" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowRoomDropdown(false);
+                      setShowCustomModal(true);
+                    }}
+                    className="w-full flex items-center gap-2 p-2 rounded-[6px] text-left text-[12px] text-accent font-bold hover:bg-surface-2 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Ввести код аудитории...</span>
+                  </button>
+                </div>
+              )}
+            </div>
+            <span className="text-[12px] font-mono text-ink-muted hidden sm:inline">
+              · Full-Duplex WebRTC
+            </span>
+          </div>
         </div>
 
         {/* Quick Tabs to Whiteboard & Code */}
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setActiveTab("whiteboard")}
+            onClick={() => {
+              if (setRoomId) setRoomId(roomId);
+              setActiveTab("whiteboard");
+            }}
             className="btn sec h-9 text-[13px]"
+            title="Открыть доску этой аудитории"
           >
             <PenTool className="w-4 h-4 text-ink" strokeWidth={2} />
             <span>Электронная доска</span>
@@ -793,47 +954,192 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
 
       {/* 1. Pre-call Join Screen */}
       {!inCall ? (
-        <section className="win max-w-xl mx-auto w-full">
-          <header>
-            <h2>Подключение к аудитории</h2>
-            <span className="font-mono text-[12px] text-ink-muted">Ауд. 402</span>
-          </header>
-
-          <div className="p-6 text-center space-y-5">
-            <div className="w-16 h-16 rounded-[10px] bg-highlight border-2 border-ink flex items-center justify-center mx-auto text-on-highlight shadow-hard">
-              <Video className="w-8 h-8" strokeWidth={2} />
+        <div className="space-y-6">
+          {/* Custom Room Modal */}
+          {showCustomModal && (
+            <div className="fixed inset-0 z-50 bg-ink/40 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="win max-w-md w-full bg-surface border-2 border-ink shadow-hard">
+                <header className="flex items-center justify-between">
+                  <h2>Подключение к своей аудитории</h2>
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomModal(false)}
+                    className="text-ink hover:text-danger cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </header>
+                <form onSubmit={handleCreateCustomRoom} className="p-4 space-y-4">
+                  <div>
+                    <label className="block text-[12px] font-bold text-ink mb-1">
+                      Код аудитории или проектной комнаты
+                    </label>
+                    <input
+                      type="text"
+                      value={customInput}
+                      onChange={(e) => setCustomInput(e.target.value)}
+                      placeholder="Например: group-web-22 или lab-room-7"
+                      className="w-full h-10 px-3 rounded-[6px] bg-surface-2 border-2 border-ink text-[13px] text-ink font-mono"
+                      autoFocus
+                    />
+                    <p className="text-[11px] text-ink-muted mt-1">
+                      Все студенты и преподаватели с этим кодом подключаются к общему видеозвонку и доске.
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomModal(false)}
+                      className="btn sec text-[13px] h-9"
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn pri text-[13px] h-9"
+                    >
+                      Выбрать аудиторию
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
+          )}
 
-            <div className="space-y-1">
-              <h3 className="text-[18px] font-bold text-ink">
-                Разработка веб-приложений (React / Node.js)
-              </h3>
-              <p className="text-[13px] text-ink-muted">
-                Прямое подключение без ботов. В звонке участвуют только реальные пользователи.
+          {/* Room Selection Grid */}
+          <div className="win">
+            <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <School className="w-4 h-4 text-accent" />
+                <h2>Выбор учебной аудитории для звонка</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCustomModal(true)}
+                className="btn sec text-[12px] h-7 px-2.5 flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Свой код комнаты</span>
+              </button>
+            </header>
+
+            <div className="p-4 sm:p-5">
+              <p className="text-[13px] text-ink-muted mb-4">
+                Выберите класс по расписанию для подключения к онлайн-занятию. У каждой аудитории отдельная комната связи и интерактивная доска:
               </p>
-            </div>
 
-            <div className="p-3.5 rounded-[6px] bg-surface-2 border-2 border-ink text-left text-[13px] space-y-2 font-mono">
-              <div className="flex items-center justify-between">
-                <span className="text-ink-muted">Устройство:</span>
-                <span className="text-ink font-bold">Камера + Микрофон</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-ink-muted">Протокол:</span>
-                <span className="text-success font-bold">P2P WebRTC Signaling</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {CALL_AUDITORIUMS.map((aud) => {
+                  const isSelected = aud.id === roomId;
+                  return (
+                    <button
+                      key={aud.id}
+                      type="button"
+                      onClick={() => handleSelectRoom(aud.id)}
+                      className={`p-3.5 rounded-[10px] border-2 text-left transition-all relative flex flex-col justify-between cursor-pointer ${
+                        isSelected
+                          ? "bg-surface-2 border-accent shadow-hard ring-2 ring-accent"
+                          : "bg-surface border-ink hover:border-accent hover:shadow-hard"
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <span className="text-2xl p-1 bg-surface rounded-[6px] border border-line">
+                            {aud.icon}
+                          </span>
+                          <span
+                            className={`text-[11px] font-mono px-2 py-0.5 rounded-[4px] border font-bold ${
+                              isSelected
+                                ? "bg-accent text-white border-accent"
+                                : "bg-surface-2 text-ink-muted border-line"
+                            }`}
+                          >
+                            {aud.subject}
+                          </span>
+                        </div>
+                        <h4 className="font-bold text-[14px] text-ink leading-tight mb-1">
+                          {aud.shortName}
+                        </h4>
+                        <p className="text-[12px] text-ink-muted leading-snug">
+                          {aud.desc}
+                        </p>
+                      </div>
+
+                      <div className="mt-3 pt-2.5 border-t border-line/60 flex items-center justify-between text-[11px] font-mono">
+                        <span className="text-ink-muted truncate max-w-[130px]">{aud.id}</span>
+                        {isSelected ? (
+                          <span className="text-accent font-bold flex items-center gap-1">
+                            <Check className="w-3.5 h-3.5" /> Выбрано
+                          </span>
+                        ) : (
+                          <span className="text-ink-muted hover:text-ink font-semibold">Подключиться</span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={handleJoinCall}
-              className="btn pri w-full py-3 text-[15px]"
-            >
-              <Video className="w-4 h-4" />
-              <span>Войти в онлайн-аудиторию</span>
-            </button>
           </div>
-        </section>
+
+          {/* Active Auditorium Summary & Join CTA */}
+          <div className="win bg-surface border-2 border-ink shadow-hard">
+            <header className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Video className="w-4 h-4 text-accent" />
+                <h2>Готовность к звонку</h2>
+              </div>
+              <span className="font-mono text-[12px] text-success font-bold flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-success" />
+                <span>WebRTC Готов</span>
+              </span>
+            </header>
+
+            <div className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-5">
+              <div className="flex items-start gap-3.5">
+                <div className="w-13 h-13 rounded-[10px] bg-highlight text-on-highlight border-2 border-ink flex items-center justify-center text-2xl shrink-0 shadow-hard">
+                  {currentAuditorium.icon}
+                </div>
+                <div>
+                  <h3 className="text-[17px] font-bold text-ink leading-tight">
+                    {currentAuditorium.name}
+                  </h3>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-[12px] font-mono text-ink-muted">
+                    <span>ID: <strong className="text-ink">{roomId}</strong></span>
+                    <span>·</span>
+                    <span>Предмет: <strong className="text-ink">{currentAuditorium.subject}</strong></span>
+                    <span>·</span>
+                    <span className="text-success font-bold">P2P Audio/Video/Screen</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5 md:shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (setRoomId) setRoomId(roomId);
+                    setActiveTab("whiteboard");
+                  }}
+                  className="btn sec h-11 px-4 text-[13px] flex items-center gap-2"
+                  title="Открыть электронную доску этой аудитории"
+                >
+                  <PenTool className="w-4 h-4 text-ink" />
+                  <span>Доска аудитории</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleJoinCall}
+                  className="btn pri h-11 px-6 text-[14px] flex items-center gap-2 !bg-accent text-white font-bold shadow-hard cursor-pointer"
+                >
+                  <Video className="w-4 h-4" />
+                  <span>Войти в {currentAuditorium.shortName}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       ) : (
         /* 2. Active Call Grid */
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
@@ -965,8 +1271,8 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
             <div className="bg-surface border-2 border-ink rounded-[10px] shadow-hard p-3.5 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <span className="font-bold text-[13px] text-ink flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-success" />
-                  <span>Аудитория 402</span>
+                  <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                  <span>{currentAuditorium.shortName}</span>
                 </span>
                 <span className="text-ink-muted">·</span>
                 <span className="font-mono text-[12px] text-ink-muted">
@@ -980,6 +1286,19 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
 
               {/* Control Buttons */}
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (setRoomId) setRoomId(roomId);
+                    setActiveTab("whiteboard");
+                  }}
+                  className="btn sec h-10 text-[12px] hidden md:flex items-center gap-1.5"
+                  title="Открыть электронную доску этой аудитории"
+                >
+                  <PenTool className="w-3.5 h-3.5 text-accent" />
+                  <span>Доска</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={toggleMic}
