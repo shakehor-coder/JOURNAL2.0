@@ -26,20 +26,21 @@ import {
 } from "lucide-react";
 
 export const DEFAULT_AUDITORIUMS = [
-  { id: "web-dev-room-402", name: "Ауд. 402 — Разработка веб-приложений (React / Node.js)", shortName: "Ауд. 402 (Web)", icon: "💻" },
-  { id: "db-room-308", name: "Ауд. 308 — Проектирование баз данных (PostgreSQL / Prisma)", shortName: "Ауд. 308 (БД)", icon: "🗄️" },
-  { id: "algo-room-501", name: "Ауд. 501 — Алгоритмы и структуры данных (C++ / Python)", shortName: "Ауд. 501 (Алгоритмы)", icon: "⚡" },
-  { id: "security-room-310", name: "Ауд. 310 — Информационная безопасность (OWASP)", shortName: "Ауд. 310 (ИБ)", icon: "🛡️" },
-  { id: "english-room-204", name: "Ауд. 204 — Английский язык в сфере IT", shortName: "Ауд. 204 (Английский)", icon: "🇬🇧" },
-  { id: "arch-room-402", name: "Ауд. 402 — Архитектура клиент-серверных систем", shortName: "Ауд. 402 (Архитектура)", icon: "🏗️" },
-  { id: "global-board", name: "Общая студенческая доска (Все потоки)", shortName: "Общая доска", icon: "🌐" }
+  { id: "group-9-3-rpo", name: "Аудитория 9/3-РПО — Разработка программного обеспечения", shortName: "9/3-РПО", icon: "💻" },
+  { id: "group-9-1-rpo", name: "Аудитория 9/1-РПО — Разработка программного обеспечения", shortName: "9/1-РПО", icon: "⚡" },
+  { id: "group-9-2-rpo", name: "Аудитория 9/2-РПО — Разработка программного обеспечения", shortName: "9/2-РПО", icon: "🚀" },
+  { id: "group-gd-9-1", name: "Аудитория ГД 9/1 — Компьютерная графика и дизайн", shortName: "ГД 9/1", icon: "🎨" },
+  { id: "group-gd-9-2-sub1", name: "Аудитория ГД 9/2 (1 группа) — Компьютерная графика и дизайн", shortName: "ГД 9/2 (1 группа)", icon: "🖌️" },
+  { id: "group-gd-9-2-sub2", name: "Аудитория ГД 9/2 (2 группа) — Компьютерная графика и дизайн", shortName: "ГД 9/2 (2 группа)", icon: "✨" },
+  { id: "group-gd-9-3", name: "Аудитория ГД 9/3 — Компьютерная графика и дизайн", shortName: "ГД 9/3", icon: "🎮" },
+  { id: "global-board", name: "Главный зал — Общая студенческая доска (Все потоки)", shortName: "Главный зал", icon: "🌐" }
 ];
 
 export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalRoomId }) => {
   const { socket, user } = useAuth();
 
   // Classroom / Auditorium State
-  const [currentRoomId, setCurrentRoomId] = useState(externalRoomId || "web-dev-room-402");
+  const [currentRoomId, setCurrentRoomId] = useState(externalRoomId || "group-9-3-rpo");
   const [showRoomDropdown, setShowRoomDropdown] = useState(false);
   const [customRoomInput, setCustomRoomInput] = useState("");
   const [showCustomRoomModal, setShowCustomRoomModal] = useState(false);

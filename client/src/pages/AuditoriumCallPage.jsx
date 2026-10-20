@@ -26,56 +26,64 @@ import {
 
 export const CALL_AUDITORIUMS = [
   {
-    id: "web-dev-room-402",
-    name: "Ауд. 402 — Разработка веб-приложений (React / Node.js)",
-    shortName: "Ауд. 402 (Web)",
+    id: "group-9-3-rpo",
+    name: "Аудитория 9/3-РПО — Разработка программного обеспечения",
+    shortName: "9/3-РПО",
     icon: "💻",
-    subject: "Веб-разработка",
-    desc: "React, Node.js, REST API, WebSocket"
+    subject: "Разработка ПО",
+    desc: "Frontend, Backend, Алгоритмы и Архитектура ПО"
   },
   {
-    id: "db-room-308",
-    name: "Ауд. 308 — Проектирование баз данных (PostgreSQL / Prisma)",
-    shortName: "Ауд. 308 (БД)",
-    icon: "🗄️",
-    subject: "Базы данных",
-    desc: "PostgreSQL, реляционные модели, SQL-запросы"
-  },
-  {
-    id: "algo-room-501",
-    name: "Ауд. 501 — Алгоритмы и структуры данных (C++ / Python)",
-    shortName: "Ауд. 501 (Алгоритмы)",
+    id: "group-9-1-rpo",
+    name: "Аудитория 9/1-РПО — Разработка программного обеспечения",
+    shortName: "9/1-РПО",
     icon: "⚡",
-    subject: "Алгоритмы",
-    desc: "Деревья, графы, динамическое программирование"
+    subject: "Разработка ПО",
+    desc: "Программирование, ООП, Базы данных и Веб-технологии"
   },
   {
-    id: "security-room-310",
-    name: "Ауд. 310 — Информационная безопасность (OWASP)",
-    shortName: "Ауд. 310 (ИБ)",
-    icon: "🛡️",
-    subject: "Инфобез",
-    desc: "Аутентификация, криптография, защита сети"
+    id: "group-9-2-rpo",
+    name: "Аудитория 9/2-РПО — Разработка программного обеспечения",
+    shortName: "9/2-РПО",
+    icon: "🚀",
+    subject: "Разработка ПО",
+    desc: "Клиент-серверные приложения, API, Системное ПО"
   },
   {
-    id: "english-room-204",
-    name: "Ауд. 204 — Английский язык в сфере IT",
-    shortName: "Ауд. 204 (Английский)",
-    icon: "🇬🇧",
-    subject: "Английский язык",
-    desc: "Техническая документация, диалоги, презентации"
+    id: "group-gd-9-1",
+    name: "Аудитория ГД 9/1 — Компьютерная графика и дизайн",
+    shortName: "ГД 9/1",
+    icon: "🎨",
+    subject: "Графический дизайн",
+    desc: "UI/UX дизайн, Figma, векторная и растровая графика"
   },
   {
-    id: "arch-room-402",
-    name: "Ауд. 402 — Архитектура клиент-серверных систем",
-    shortName: "Ауд. 402 (Архитектура)",
-    icon: "🏗️",
-    subject: "Архитектура ПО",
-    desc: "Микросервисы, распределенные шины, Docker"
+    id: "group-gd-9-2-sub1",
+    name: "Аудитория ГД 9/2 (1 группа) — Компьютерная графика и дизайн",
+    shortName: "ГД 9/2 (1 группа)",
+    icon: "🖌️",
+    subject: "Графический дизайн",
+    desc: "1-я подгруппа: 3D моделирование, Blender, анимация"
+  },
+  {
+    id: "group-gd-9-2-sub2",
+    name: "Аудитория ГД 9/2 (2 группа) — Компьютерная графика и дизайн",
+    shortName: "ГД 9/2 (2 группа)",
+    icon: "✨",
+    subject: "Графический дизайн",
+    desc: "2-я подгруппа: Цифровой рисунок, скетчинг, брендинг"
+  },
+  {
+    id: "group-gd-9-3",
+    name: "Аудитория ГД 9/3 — Компьютерная графика и дизайн",
+    shortName: "ГД 9/3",
+    icon: "🎮",
+    subject: "Графический дизайн / GameDev",
+    desc: "Игровой арт, концепт-арт, дизайн персонажей и интерфейсов"
   },
   {
     id: "global-board",
-    name: "Главный зал — Общая студенческая аудитория (Все группы)",
+    name: "Главный зал — Общая студенческая аудитория (Все потоки)",
     shortName: "Главный зал",
     icon: "🌐",
     subject: "Общий поток",
@@ -214,7 +222,7 @@ const RemoteParticipantCard = ({ participant, stream }) => {
 
 export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoomId }) => {
   const { user, socket } = useAuth();
-  const [roomId, setLocalRoomId] = useState(initialRoomId || "web-dev-room-402");
+  const [roomId, setLocalRoomId] = useState(initialRoomId || "group-9-3-rpo");
 
   useEffect(() => {
     if (initialRoomId) setLocalRoomId(initialRoomId);

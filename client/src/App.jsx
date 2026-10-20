@@ -56,7 +56,7 @@ export default function App() {
   const { isAuthenticated } = useAuth();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedProfileId, setSelectedProfileId] = useState("me");
-  const [selectedRoomId, setSelectedRoomId] = useState("web-dev-room-402");
+  const [selectedRoomId, setSelectedRoomId] = useState("group-9-3-rpo");
 
   if (!isAuthenticated) {
     return <LoginPage />;
