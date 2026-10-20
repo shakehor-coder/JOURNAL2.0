@@ -1034,6 +1034,17 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("board-delete-stroke", ({ roomId, strokeId }) => {
+    if (boardStates.has(roomId)) {
+      const strokes = boardStates.get(roomId);
+      const idx = strokes.findIndex((s) => s.id === strokeId);
+      if (idx !== -1) {
+        strokes.splice(idx, 1);
+      }
+      socket.to(`board-${roomId}`).emit("board-delete-stroke", { strokeId });
+    }
+  });
+
   socket.on("board-clear", ({ roomId }) => {
     boardStates.set(roomId, []);
     socket.to(`board-${roomId}`).emit("board-cleared");

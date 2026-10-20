@@ -22,7 +22,10 @@ import {
   Plus,
   School,
   ChevronDown,
-  AlertCircle
+  AlertCircle,
+  MousePointer2,
+  ArrowUp,
+  ArrowDown
 } from "lucide-react";
 
 export const DEFAULT_AUDITORIUMS = [
@@ -62,11 +65,16 @@ export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalR
   const fileInputRef = useRef(null);
 
   // Drawing & Navigation State
-  const [tool, setTool] = useState("pen"); // 'pen' | 'eraser' | 'rect' | 'circle' | 'arrow' | 'line' | 'text' | 'hand'
+  const [tool, setTool] = useState("pen"); // 'select' | 'pen' | 'eraser' | 'rect' | 'circle' | 'arrow' | 'line' | 'text' | 'hand'
   const [color, setColor] = useState("#1a1917");
   const [lineWidth, setLineWidth] = useState(3);
   const [fontSize, setFontSize] = useState(24);
   const [isDrawing, setIsDrawing] = useState(false);
+
+  // Selected Element & Transformation State (Move / Resize Photos)
+  const [selectedElementId, setSelectedElementId] = useState(null);
+  const dragModeRef = useRef(null); // { type: 'move'|'resize', handle, startScreenPos, startWorldPos, origElement, origAspect }
+  const [hoverCursor, setHoverCursor] = useState("crosshair");
 
   // Pan & Zoom
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -166,6 +174,115 @@ export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalR
     imageCacheRef.current.set(src, img);
     return img;
   }, []);
+
+  // Hit-test element at world position (reverse iteration: topmost element first)
+  const getElementAtWorldPos = useCallback((worldX, worldY) => {
+    for (let i = elementsRef.current.length - 1; i >= 0; i--) {
+      const el = elementsRef.current[i];
+      if (el.tool === "image") {
+        if (
+          worldX >= el.x &&
+          worldX <= el.x + el.width &&
+          worldY >= el.y &&
+          worldY <= el.y + el.height
+        ) {
+          return el;
+        }
+      } else if (el.tool === "text") {
+        const size = el.fontSize || 24;
+        const lines = (el.text || "").split("\n");
+        const maxLen = Math.max(...lines.map((l) => l.length), 1);
+        const w = maxLen * (size * 0.65);
+        const h = lines.length * (size * 1.3);
+        if (
+          worldX >= el.x &&
+          worldX <= el.x + w &&
+          worldY >= el.y - size &&
+          worldY <= el.y + h
+        ) {
+          return el;
+        }
+      } else if (el.tool === "rect") {
+        if (el.from && el.to) {
+          const minX = Math.min(el.from.x, el.to.x);
+          const maxX = Math.max(el.from.x, el.to.x);
+          const minY = Math.min(el.from.y, el.to.y);
+          const maxY = Math.max(el.from.y, el.to.y);
+          if (worldX >= minX && worldX <= maxX && worldY >= minY && worldY <= maxY) {
+            return el;
+          }
+        }
+      }
+    }
+    return null;
+  }, []);
+
+  // Hit-test resize handles of a selected element (in screen pixels for precision)
+  const getResizeHandleAtScreenPos = useCallback(
+    (screenX, screenY, el) => {
+      if (!el || el.tool !== "image") return null;
+      const sTL = toScreen(el.x, el.y);
+      const sTR = toScreen(el.x + el.width, el.y);
+      const sBR = toScreen(el.x + el.width, el.y + el.height);
+      const sBL = toScreen(el.x, el.y + el.height);
+      const sTC = toScreen(el.x + el.width / 2, el.y);
+      const sBC = toScreen(el.x + el.width / 2, el.y + el.height);
+      const sML = toScreen(el.x, el.y + el.height / 2);
+      const sMR = toScreen(el.x + el.width, el.y + el.height / 2);
+
+      const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      const threshold = 16; // 16px touch & mouse hit radius
+
+      const p = { x: screenX, y: screenY };
+      if (dist(p, sTL) <= threshold) return "nw";
+      if (dist(p, sTR) <= threshold) return "ne";
+      if (dist(p, sBR) <= threshold) return "se";
+      if (dist(p, sBL) <= threshold) return "sw";
+      if (dist(p, sTC) <= threshold) return "n";
+      if (dist(p, sBC) <= threshold) return "s";
+      if (dist(p, sML) <= threshold) return "w";
+      if (dist(p, sMR) <= threshold) return "e";
+      return null;
+    },
+    [toScreen]
+  );
+
+  // Draw selection box and 8 handles around an active element
+  const drawSelectionBoxAndHandles = (ctx, el, currentZoom) => {
+    ctx.save();
+    // Bounding Box
+    ctx.strokeStyle = "#2563eb";
+    ctx.lineWidth = Math.max(1.5, 2 / currentZoom);
+    ctx.setLineDash([6 / currentZoom, 4 / currentZoom]);
+    ctx.strokeRect(el.x, el.y, el.width, el.height);
+    ctx.setLineDash([]);
+
+    // 8 Handles
+    const handleSize = Math.max(10, 14 / currentZoom);
+    const halfH = handleSize / 2;
+
+    const handles = [
+      { x: el.x, y: el.y, type: "nw" },
+      { x: el.x + el.width, y: el.y, type: "ne" },
+      { x: el.x + el.width, y: el.y + el.height, type: "se" },
+      { x: el.x, y: el.y + el.height, type: "sw" },
+      { x: el.x + el.width / 2, y: el.y, type: "n" },
+      { x: el.x + el.width / 2, y: el.y + el.height, type: "s" },
+      { x: el.x, y: el.y + el.height / 2, type: "w" },
+      { x: el.x + el.width, y: el.y + el.height / 2, type: "e" }
+    ];
+
+    ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = "#2563eb";
+    ctx.lineWidth = Math.max(1.5, 2.5 / currentZoom);
+
+    handles.forEach((h) => {
+      ctx.fillRect(h.x - halfH, h.y - halfH, handleSize, handleSize);
+      ctx.strokeRect(h.x - halfH, h.y - halfH, handleSize, handleSize);
+    });
+
+    ctx.restore();
+  };
 
   // Infinite Grid that moves and scales with Pan & Zoom
   const drawGrid = (ctx, width, height, currentPan, currentZoom) => {
@@ -314,8 +431,16 @@ export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalR
       renderElement(ctx, el);
     }
 
+    // Render selection box & handles for selected element
+    if (selectedElementId) {
+      const selectedEl = elementsRef.current.find((e) => e.id === selectedElementId);
+      if (selectedEl && selectedEl.tool === "image") {
+        drawSelectionBoxAndHandles(ctx, selectedEl, zoom);
+      }
+    }
+
     ctx.restore();
-  }, [bgColor, pan, zoom, renderElement]);
+  }, [bgColor, pan, zoom, renderElement, selectedElementId]);
 
   // Handle Resize & Canvas Initialization
   const setupCanvases = useCallback(() => {
@@ -390,9 +515,17 @@ export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalR
       }
     };
 
+    const handleDeleteStroke = ({ strokeId }) => {
+      elementsRef.current = elementsRef.current.filter((s) => s.id !== strokeId);
+      setElementsCount(elementsRef.current.length);
+      setSelectedElementId((prev) => (prev === strokeId ? null : prev));
+      redraw();
+    };
+
     const handleBoardCleared = () => {
       elementsRef.current = [];
       setElementsCount(0);
+      setSelectedElementId(null);
       redraw();
       showToast("Доска очищена преподавателем");
     };
@@ -400,6 +533,7 @@ export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalR
     socket.on("board-init-state", handleInitState);
     socket.on("board-draw-stroke", handleDrawStroke);
     socket.on("board-update-stroke", handleUpdateStroke);
+    socket.on("board-delete-stroke", handleDeleteStroke);
     socket.on("board-cleared", handleBoardCleared);
 
     return () => {
@@ -407,6 +541,7 @@ export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalR
       socket.off("board-init-state", handleInitState);
       socket.off("board-draw-stroke", handleDrawStroke);
       socket.off("board-update-stroke", handleUpdateStroke);
+      socket.off("board-delete-stroke", handleDeleteStroke);
       socket.off("board-cleared", handleBoardCleared);
     };
   }, [socket, currentRoomId, redraw]);
@@ -432,7 +567,65 @@ export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalR
     };
   }, []);
 
-  // Keyboard Shortcuts (Undo, Clear, Zoom)
+  const scaleSelectedImage = (factor) => {
+    if (!selectedElementId) return;
+    const el = elementsRef.current.find((e) => e.id === selectedElementId);
+    if (!el || el.tool !== "image") return;
+    const newW = Math.max(40, Math.round(el.width * factor));
+    const newH = Math.max(40, Math.round(el.height * factor));
+    const dx = (newW - el.width) / 2;
+    const dy = (newH - el.height) / 2;
+    el.x = Math.round(el.x - dx);
+    el.y = Math.round(el.y - dy);
+    el.width = newW;
+    el.height = newH;
+    redraw();
+    if (socket) {
+      socket.emit("board-draw-stroke", { roomId: currentRoomId, stroke: el });
+    }
+    showToast(`Масштаб фото: ${factor > 1 ? "+" : "-"}${Math.round(Math.abs(factor - 1) * 100)}%`);
+  };
+
+  const deleteSelectedElement = () => {
+    if (!selectedElementId) return;
+    const idToDelete = selectedElementId;
+    elementsRef.current = elementsRef.current.filter((e) => e.id !== idToDelete);
+    setElementsCount(elementsRef.current.length);
+    setSelectedElementId(null);
+    redraw();
+    if (socket) {
+      socket.emit("board-delete-stroke", { roomId: currentRoomId, strokeId: idToDelete });
+    }
+    showToast("Фото удалено с доски");
+  };
+
+  const bringSelectedForward = () => {
+    if (!selectedElementId) return;
+    const idx = elementsRef.current.findIndex((e) => e.id === selectedElementId);
+    if (idx === -1 || idx === elementsRef.current.length - 1) return;
+    const [item] = elementsRef.current.splice(idx, 1);
+    elementsRef.current.push(item);
+    redraw();
+    if (socket) {
+      socket.emit("board-draw-stroke", { roomId: currentRoomId, stroke: item });
+    }
+    showToast("На передний план");
+  };
+
+  const sendSelectedBackward = () => {
+    if (!selectedElementId) return;
+    const idx = elementsRef.current.findIndex((e) => e.id === selectedElementId);
+    if (idx <= 0) return;
+    const [item] = elementsRef.current.splice(idx, 1);
+    elementsRef.current.unshift(item);
+    redraw();
+    if (socket) {
+      socket.emit("board-draw-stroke", { roomId: currentRoomId, stroke: item });
+    }
+    showToast("На задний план");
+  };
+
+  // Keyboard Shortcuts (Undo, Delete, Clear, Zoom)
   useEffect(() => {
     const handleShortcuts = (e) => {
       if (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA") return;
@@ -440,11 +633,22 @@ export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalR
       if ((e.ctrlKey || e.metaKey) && e.key === "z") {
         e.preventDefault();
         handleUndo();
+      } else if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedElementId) {
+          e.preventDefault();
+          deleteSelectedElement();
+        }
+      } else if (e.key === "Escape") {
+        setSelectedElementId(null);
+      } else if (e.key.toLowerCase() === "v") {
+        setTool("select");
+      } else if (e.key.toLowerCase() === "h") {
+        setTool("hand");
       }
     };
     window.addEventListener("keydown", handleShortcuts);
     return () => window.removeEventListener("keydown", handleShortcuts);
-  }, [currentRoomId, socket]);
+  }, [currentRoomId, socket, selectedElementId]);
 
   // ==========================================
   // Image Upload / Drag & Drop / Clipboard Paste
@@ -498,6 +702,8 @@ export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalR
 
         elementsRef.current.push(imageElement);
         setElementsCount(elementsRef.current.length);
+        setSelectedElementId(imageElement.id);
+        setTool("select");
         redraw();
 
         if (socket) {
@@ -506,7 +712,7 @@ export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalR
             stroke: imageElement
           });
         }
-        showToast("Изображение добавлено на доску!");
+        showToast("Фото добавлено! Тяните за углы для изменения размера или перемещайте по доске");
       };
       img.src = dataUrl;
     };
@@ -588,6 +794,26 @@ export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalR
 
     const screenPos = getScreenCoordinates(e);
 
+    // 0. Check Resize Handles of currently selected image first!
+    if (selectedElementId) {
+      const selectedEl = elementsRef.current.find((item) => item.id === selectedElementId);
+      if (selectedEl && selectedEl.tool === "image") {
+        const handle = getResizeHandleAtScreenPos(screenPos.x, screenPos.y, selectedEl);
+        if (handle) {
+          const worldPos = toWorld(screenPos.x, screenPos.y);
+          dragModeRef.current = {
+            type: "resize",
+            handle,
+            startScreenPos: screenPos,
+            startWorldPos: worldPos,
+            origElement: { ...selectedEl },
+            origAspect: (selectedEl.width || 400) / (selectedEl.height || 300)
+          };
+          return;
+        }
+      }
+    }
+
     // 1. Pan / Hand tool OR Spacebar held OR Middle Mouse Button
     if (tool === "hand" || isSpacePressedRef.current || e.button === 1) {
       isPanningRef.current = true;
@@ -598,9 +824,34 @@ export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalR
       return;
     }
 
-    // 2. Text tool click
+    const worldPos = toWorld(screenPos.x, screenPos.y);
+
+    // 2. Select tool OR direct click on an image
+    const clickedEl = getElementAtWorldPos(worldPos.x, worldPos.y);
+    if (tool === "select" || (clickedEl && clickedEl.tool === "image")) {
+      if (clickedEl) {
+        setSelectedElementId(clickedEl.id);
+        dragModeRef.current = {
+          type: "move",
+          startScreenPos: screenPos,
+          startWorldPos: worldPos,
+          origElement: { ...clickedEl }
+        };
+        redraw();
+        return;
+      } else {
+        if (selectedElementId) {
+          setSelectedElementId(null);
+          redraw();
+        }
+        if (tool === "select") {
+          return;
+        }
+      }
+    }
+
+    // 3. Text tool click
     if (tool === "text") {
-      const worldPos = toWorld(screenPos.x, screenPos.y);
       setTextDialog({
         screenX: screenPos.x,
         screenY: screenPos.y,
@@ -611,8 +862,7 @@ export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalR
       return;
     }
 
-    // 3. Regular Drawing (Pen, Eraser, Shapes)
-    const worldPos = toWorld(screenPos.x, screenPos.y);
+    // 4. Regular Drawing (Pen, Eraser, Shapes)
     setIsDrawing(true);
     startWorldPosRef.current = worldPos;
     lastWorldPosRef.current = worldPos;
@@ -635,9 +885,101 @@ export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalR
       return;
     }
 
+    // 2. Resizing or Moving Element
+    if (dragModeRef.current) {
+      const currentWorldPos = toWorld(screenPos.x, screenPos.y);
+      const el = elementsRef.current.find((item) => item.id === selectedElementId);
+      if (!el) return;
+
+      if (dragModeRef.current.type === "move") {
+        const dx = currentWorldPos.x - dragModeRef.current.startWorldPos.x;
+        const dy = currentWorldPos.y - dragModeRef.current.startWorldPos.y;
+        el.x = Math.round(dragModeRef.current.origElement.x + dx);
+        el.y = Math.round(dragModeRef.current.origElement.y + dy);
+        redraw();
+        return;
+      }
+
+      if (dragModeRef.current.type === "resize") {
+        const { handle, startWorldPos, origElement, origAspect } = dragModeRef.current;
+        const dx = currentWorldPos.x - startWorldPos.x;
+        const dy = currentWorldPos.y - startWorldPos.y;
+        const minSize = 40;
+
+        let newW = origElement.width;
+        let newH = origElement.height;
+        let newX = origElement.x;
+        let newY = origElement.y;
+
+        if (handle === "se") {
+          newW = Math.max(minSize, origElement.width + dx);
+          newH = Math.round(newW / origAspect);
+        } else if (handle === "sw") {
+          newW = Math.max(minSize, origElement.width - dx);
+          newH = Math.round(newW / origAspect);
+          newX = origElement.x + (origElement.width - newW);
+        } else if (handle === "ne") {
+          newW = Math.max(minSize, origElement.width + dx);
+          newH = Math.round(newW / origAspect);
+          newY = origElement.y + (origElement.height - newH);
+        } else if (handle === "nw") {
+          newW = Math.max(minSize, origElement.width - dx);
+          newH = Math.round(newW / origAspect);
+          newX = origElement.x + (origElement.width - newW);
+          newY = origElement.y + (origElement.height - newH);
+        } else if (handle === "e") {
+          newW = Math.max(minSize, origElement.width + dx);
+        } else if (handle === "w") {
+          newW = Math.max(minSize, origElement.width - dx);
+          newX = origElement.x + (origElement.width - newW);
+        } else if (handle === "s") {
+          newH = Math.max(minSize, origElement.height + dy);
+        } else if (handle === "n") {
+          newH = Math.max(minSize, origElement.height - dy);
+          newY = origElement.y + (origElement.height - newH);
+        }
+
+        el.x = Math.round(newX);
+        el.y = Math.round(newY);
+        el.width = Math.round(newW);
+        el.height = Math.round(newH);
+        redraw();
+        return;
+      }
+    }
+
+    // Dynamic Hover Cursor
+    if (selectedElementId) {
+      const selectedEl = elementsRef.current.find((item) => item.id === selectedElementId);
+      if (selectedEl && selectedEl.tool === "image") {
+        const handle = getResizeHandleAtScreenPos(screenPos.x, screenPos.y, selectedEl);
+        if (handle) {
+          if (handle === "nw" || handle === "se") setHoverCursor("nwse-resize");
+          else if (handle === "ne" || handle === "sw") setHoverCursor("nesw-resize");
+          else if (handle === "n" || handle === "s") setHoverCursor("ns-resize");
+          else if (handle === "w" || handle === "e") setHoverCursor("ew-resize");
+          return;
+        }
+      }
+    }
+
+    const worldPos = toWorld(screenPos.x, screenPos.y);
+    const hoveredEl = getElementAtWorldPos(worldPos.x, worldPos.y);
+    if (hoveredEl && (hoveredEl.tool === "image" || tool === "select")) {
+      setHoverCursor("move");
+    } else if (tool === "hand" || isSpacePressedRef.current) {
+      setHoverCursor(isPanningRef.current ? "grabbing" : "grab");
+    } else if (tool === "select") {
+      setHoverCursor("default");
+    } else if (tool === "text") {
+      setHoverCursor("text");
+    } else {
+      setHoverCursor("crosshair");
+    }
+
     if (!isDrawing) return;
 
-    // 2. Drawing
+    // 3. Drawing
     const currentWorldPos = toWorld(screenPos.x, screenPos.y);
     const ctx = contextRef.current;
     const pCtx = previewContextRef.current;
@@ -700,6 +1042,19 @@ export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalR
   const handlePointerUp = () => {
     if (isPanningRef.current) {
       isPanningRef.current = false;
+      return;
+    }
+
+    if (dragModeRef.current) {
+      const el = elementsRef.current.find((item) => item.id === selectedElementId);
+      if (el && socket) {
+        socket.emit("board-draw-stroke", {
+          roomId: currentRoomId,
+          stroke: el
+        });
+      }
+      dragModeRef.current = null;
+      redraw();
       return;
     }
 
@@ -993,6 +1348,21 @@ export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalR
 
         {/* Center: Tools Selector */}
         <div className="flex items-center gap-1 p-1 rounded-[6px] bg-surface-2 border-2 border-ink overflow-x-auto">
+          {/* Select & Move Tool */}
+          <button
+            type="button"
+            onClick={() => {
+              setTool("select");
+              showToast("Выбор фото: кликните на картинку для перемещения и масштабирования (V)");
+            }}
+            title="Выбор и перемещение фото (V)"
+            className={`p-2 rounded-[4px] cursor-pointer transition-all ${
+              tool === "select" ? "bg-accent text-white" : "text-ink hover:bg-surface"
+            }`}
+          >
+            <MousePointer2 className="w-4 h-4" />
+          </button>
+
           {/* Hand / Pan Tool */}
           <button
             type="button"
@@ -1184,15 +1554,8 @@ export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalR
           onTouchStart={handlePointerDown}
           onTouchMove={handlePointerMove}
           onTouchEnd={handlePointerUp}
-          className={`w-full h-full block touch-none ${
-            tool === "hand" || isSpacePressedRef.current
-              ? isPanningRef.current
-                ? "cursor-grabbing"
-                : "cursor-grab"
-              : tool === "text"
-              ? "cursor-text"
-              : "cursor-crosshair"
-          }`}
+          style={{ cursor: hoverCursor }}
+          className="w-full h-full block touch-none"
         />
 
         {/* Overlay Preview Canvas for Shapes */}
@@ -1200,6 +1563,80 @@ export const WhiteboardPage = ({ roomId: externalRoomId, setRoomId: setExternalR
           ref={previewCanvasRef}
           className="absolute inset-0 pointer-events-none w-full h-full block"
         />
+
+        {/* Floating Quick Action Toolbar for Selected Image */}
+        {selectedElementId && (() => {
+          const selEl = elementsRef.current.find((e) => e.id === selectedElementId);
+          if (!selEl || selEl.tool !== "image") return null;
+          const sPos = toScreen(selEl.x, selEl.y);
+          return (
+            <div
+              style={{
+                left: Math.max(16, sPos.x),
+                top: Math.max(16, sPos.y - 48)
+              }}
+              className="absolute z-40 flex items-center gap-1.5 p-1.5 bg-surface border-2 border-ink rounded-[8px] shadow-hard text-xs select-none backdrop-blur-xs"
+            >
+              <span className="font-mono font-bold text-[11px] px-1 text-ink-muted">
+                {Math.round(selEl.width)}×{Math.round(selEl.height)}px
+              </span>
+              <span className="w-px h-4 bg-ink/20" />
+              <button
+                type="button"
+                onClick={() => scaleSelectedImage(1.2)}
+                title="Увеличить фото (+20%)"
+                className="btn sec h-7 px-2 text-xs flex items-center gap-1 cursor-pointer"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+                <span>+20%</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => scaleSelectedImage(0.8)}
+                title="Уменьшить фото (-20%)"
+                className="btn sec h-7 px-2 text-xs flex items-center gap-1 cursor-pointer"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
+                <span>-20%</span>
+              </button>
+              <span className="w-px h-4 bg-ink/20" />
+              <button
+                type="button"
+                onClick={bringSelectedForward}
+                title="На передний план"
+                className="btn sec h-7 px-1.5 text-xs flex items-center cursor-pointer"
+              >
+                <ArrowUp className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={sendSelectedBackward}
+                title="На задний план"
+                className="btn sec h-7 px-1.5 text-xs flex items-center cursor-pointer"
+              >
+                <ArrowDown className="w-3.5 h-3.5" />
+              </button>
+              <span className="w-px h-4 bg-ink/20" />
+              <button
+                type="button"
+                onClick={deleteSelectedElement}
+                title="Удалить фото (Delete)"
+                className="btn pri !bg-danger text-white h-7 px-2 text-xs flex items-center gap-1 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Удалить</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedElementId(null)}
+                title="Снять выбор (Esc)"
+                className="p-1 rounded-[4px] hover:bg-surface-2 text-ink-muted hover:text-ink cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          );
+        })()}
 
         {/* Floating Top-Right Room & Sync Pill */}
         <div className="absolute top-3 right-3 flex items-center gap-2">
