@@ -91,6 +91,17 @@ export const CALL_AUDITORIUMS = [
   }
 ];
 
+export const ICE_SERVERS = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun2.l.google.com:19302" },
+  { urls: "stun:stun3.l.google.com:19302" },
+  { urls: "stun:stun4.l.google.com:19302" },
+  { urls: "stun:stun.services.mozilla.com" },
+  { urls: "stun:stun.relay.metered.ca:80" },
+  { urls: "stun:openrelay.metered.ca:80" }
+];
+
 /**
  * Clean Remote Video Participant
  */
@@ -102,19 +113,42 @@ const RemoteParticipantCard = ({ participant, stream }) => {
   // Always keep audio playing through dedicated element
   useEffect(() => {
     if (audioRef.current && stream) {
-      audioRef.current.srcObject = stream;
-      audioRef.current.play?.().catch(() => {});
+      if (audioRef.current.srcObject !== stream) {
+        audioRef.current.srcObject = stream;
+      }
+      audioRef.current.play?.().catch((e) => {
+        console.warn("Audio autoplay pending interaction:", e);
+      });
     }
   }, [stream]);
 
-  const isShowingVideo = Boolean(stream && (participant.hasVideo || participant.isScreenSharing));
+  const hasLiveVideoTrack = Boolean(
+    stream &&
+    stream.getVideoTracks().some((t) => t.readyState === "live")
+  );
+
+  const isShowingVideo = Boolean(
+    stream &&
+    (participant.hasVideo || participant.isScreenSharing || hasLiveVideoTrack)
+  );
 
   useEffect(() => {
-    if (videoRef.current && stream && isShowingVideo) {
-      videoRef.current.srcObject = stream;
+    if (videoRef.current && stream) {
+      if (videoRef.current.srcObject !== stream) {
+        videoRef.current.srcObject = stream;
+      }
       videoRef.current.play?.().catch((e) => console.log("Remote play err:", e));
     }
   }, [stream, isShowingVideo, participant.isScreenSharing, participant.hasVideo]);
+
+  const handleCardClick = () => {
+    if (audioRef.current && audioRef.current.paused) {
+      audioRef.current.play().catch(() => {});
+    }
+    if (videoRef.current && videoRef.current.paused) {
+      videoRef.current.play().catch(() => {});
+    }
+  };
 
   const initials = participant.name
     ? participant.name
@@ -142,7 +176,10 @@ const RemoteParticipantCard = ({ participant, stream }) => {
   };
 
   return (
-    <div className={`relative rounded-[10px] bg-surface border-2 border-ink overflow-hidden aspect-video flex items-center justify-center shadow-hard ${participant.isScreenSharing ? "ring-4 ring-accent" : ""}`}>
+    <div
+      onClick={handleCardClick}
+      className={`relative rounded-[10px] bg-surface border-2 border-ink overflow-hidden aspect-video flex items-center justify-center shadow-hard cursor-pointer ${participant.isScreenSharing ? "ring-4 ring-accent" : ""}`}
+    >
       {/* Hidden audio element ensuring audio stream is ALWAYS heard */}
       <audio
         ref={(el) => {
@@ -167,6 +204,7 @@ const RemoteParticipantCard = ({ participant, stream }) => {
           }}
           autoPlay
           playsInline
+          muted
           className={`w-full h-full ${participant.isScreenSharing ? "object-contain bg-black" : "object-cover"}`}
         />
       ) : (
@@ -261,6 +299,37 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
   const peerConnectionsRef = useRef({});
   const isSpeakingRef = useRef(false);
   const screenStreamRef = useRef(null);
+  const iceCandidateQueueRef = useRef({});
+
+  // Always attach local stream to local video element when active
+  useEffect(() => {
+    if (inCall && localVideoRef.current && localStreamRef.current) {
+      if (localVideoRef.current.srcObject !== localStreamRef.current) {
+        localVideoRef.current.srcObject = localStreamRef.current;
+      }
+      localVideoRef.current.play?.().catch(() => {});
+    }
+  }, [inCall, cameraOn, isScreenSharing]);
+
+  // Global user-gesture audio unlocker
+  useEffect(() => {
+    const unlockAudio = () => {
+      document.querySelectorAll("audio").forEach((el) => {
+        if (el.srcObject && el.paused) {
+          el.play().catch(() => {});
+        }
+      });
+      if (audioContextRef.current && audioContextRef.current.state === "suspended") {
+        audioContextRef.current.resume().catch(() => {});
+      }
+    };
+    window.addEventListener("click", unlockAudio);
+    window.addEventListener("touchstart", unlockAudio);
+    return () => {
+      window.removeEventListener("click", unlockAudio);
+      window.removeEventListener("touchstart", unlockAudio);
+    };
+  }, []);
 
   const userName = user?.fullName || user?.username || "Студент";
   const userInitials = userName
@@ -449,38 +518,120 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
     }
   };
 
-  // Toggle Microphone
-  const toggleMic = () => {
-    const next = !micOn;
-    setMicOn(next);
-    if (localStreamRef.current) {
-      localStreamRef.current.getAudioTracks().forEach((t) => (t.enabled = next));
-    }
-    if (!next) {
+  // Toggle Microphone with dynamic browser device request
+  const toggleMic = async () => {
+    if (!micOn) {
+      try {
+        let aTrack = localStreamRef.current?.getAudioTracks().find((t) => t.readyState === "live");
+        if (!aTrack) {
+          const aStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          aTrack = aStream.getAudioTracks()[0];
+          if (!localStreamRef.current) localStreamRef.current = new MediaStream();
+          localStreamRef.current.addTrack(aTrack);
+          setupAudioMeter(localStreamRef.current);
+        } else {
+          aTrack.enabled = true;
+        }
+
+        setMicOn(true);
+
+        for (const pc of Object.values(peerConnectionsRef.current)) {
+          const senders = pc.getSenders ? pc.getSenders() : [];
+          const aSender = senders.find((s) => s.track && s.track.kind === "audio");
+          if (aSender) {
+            await aSender.replaceTrack(aTrack).catch(() => {});
+          } else {
+            pc.addTrack(aTrack, localStreamRef.current);
+          }
+        }
+
+        if (socket) {
+          socket.emit("update-media-state", {
+            roomId,
+            mediaState: { mic: true }
+          });
+        }
+        showNotice("Микрофон включен");
+      } catch (err) {
+        console.warn("Mic activation error:", err);
+        showNotice("Не удалось включить микрофон: проверьте доступ в браузере");
+      }
+    } else {
+      setMicOn(false);
+      if (localStreamRef.current) {
+        localStreamRef.current.getAudioTracks().forEach((t) => (t.enabled = false));
+      }
       setAudioLevel(0);
       setIsSpeaking(false);
       isSpeakingRef.current = false;
-    }
-    if (socket) {
-      socket.emit("update-media-state", {
-        roomId,
-        mediaState: { mic: next, isSpeaking: false }
-      });
+      if (socket) {
+        socket.emit("update-media-state", {
+          roomId,
+          mediaState: { mic: false, isSpeaking: false }
+        });
+      }
+      showNotice("Микрофон выключен");
     }
   };
 
-  // Toggle Camera
-  const toggleCamera = () => {
-    const next = !cameraOn;
-    setCameraOn(next);
-    if (localStreamRef.current) {
-      localStreamRef.current.getVideoTracks().forEach((t) => (t.enabled = next));
-    }
-    if (socket) {
-      socket.emit("update-media-state", {
-        roomId,
-        mediaState: { video: next }
-      });
+  // Toggle Camera with dynamic browser device request
+  const toggleCamera = async () => {
+    if (!cameraOn) {
+      try {
+        let vTrack = localStreamRef.current?.getVideoTracks().find((t) => t.readyState === "live" && !t.label?.includes("canvas"));
+        if (!vTrack) {
+          const vStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              facingMode: "user"
+            }
+          });
+          vTrack = vStream.getVideoTracks()[0];
+          if (!localStreamRef.current) {
+            localStreamRef.current = new MediaStream();
+          }
+          // Remove old dummy tracks
+          localStreamRef.current.getVideoTracks().forEach((t) => {
+            t.stop();
+            localStreamRef.current.removeTrack(t);
+          });
+          localStreamRef.current.addTrack(vTrack);
+        } else {
+          vTrack.enabled = true;
+        }
+
+        setCameraOn(true);
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = localStreamRef.current;
+          localVideoRef.current.play?.().catch(() => {});
+        }
+
+        await replaceVideoTrack(vTrack);
+
+        if (socket) {
+          socket.emit("update-media-state", {
+            roomId,
+            mediaState: { video: true }
+          });
+        }
+        showNotice("Камера включена!");
+      } catch (err) {
+        console.warn("Camera activation error:", err);
+        showNotice("Не удалось включить камеру: проверьте доступ в браузере");
+      }
+    } else {
+      setCameraOn(false);
+      if (localStreamRef.current) {
+        localStreamRef.current.getVideoTracks().forEach((t) => (t.enabled = false));
+      }
+      if (socket) {
+        socket.emit("update-media-state", {
+          roomId,
+          mediaState: { video: false }
+        });
+      }
+      showNotice("Камера выключена");
     }
   };
 
@@ -597,10 +748,7 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
     }
 
     const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" }
-      ]
+      iceServers: ICE_SERVERS
     });
 
     if (localStreamRef.current) {
@@ -614,6 +762,18 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
       });
     }
 
+    // Always ensure transceivers for both audio and video exist so we can receive both!
+    const transceivers = pc.getTransceivers ? pc.getTransceivers() : [];
+    const hasAudio = transceivers.some((t) => t.receiver?.track?.kind === "audio");
+    const hasVideo = transceivers.some((t) => t.receiver?.track?.kind === "video");
+
+    if (!hasAudio && pc.addTransceiver) {
+      pc.addTransceiver("audio", { direction: "sendrecv" });
+    }
+    if (!hasVideo && pc.addTransceiver) {
+      pc.addTransceiver("video", { direction: "sendrecv" });
+    }
+
     pc.onicecandidate = (event) => {
       if (event.candidate && socket) {
         socket.emit("call-signal", {
@@ -624,17 +784,33 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
       }
     };
 
-    pc.ontrack = (event) => {
-      let stream = event.streams && event.streams[0];
-      if (!stream && event.track) {
-        stream = new MediaStream([event.track]);
+    pc.oniceconnectionstatechange = () => {
+      console.log(`[WebRTC] ICE state with ${targetSocketId}:`, pc.iceConnectionState);
+      if (pc.iceConnectionState === "failed") {
+        pc.restartIce?.();
       }
-      if (stream) {
-        setRemoteStreams((prev) => ({
+    };
+
+    pc.ontrack = (event) => {
+      console.log(`[WebRTC] Received remote track (${event.track.kind}) from ${targetSocketId}`);
+      event.track.enabled = true;
+      setRemoteStreams((prev) => {
+        let stream = prev[targetSocketId];
+        if (event.streams && event.streams[0]) {
+          stream = event.streams[0];
+        } else {
+          if (!stream) {
+            stream = new MediaStream();
+          }
+          if (!stream.getTracks().some((t) => t.id === event.track.id)) {
+            stream.addTrack(event.track);
+          }
+        }
+        return {
           ...prev,
           [targetSocketId]: stream
-        }));
-      }
+        };
+      });
     };
 
     peerConnectionsRef.current[targetSocketId] = pc;
@@ -683,6 +859,7 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
     }
     Object.values(peerConnectionsRef.current).forEach((pc) => pc.close());
     peerConnectionsRef.current = {};
+    iceCandidateQueueRef.current = {};
     setParticipants([]);
     setRemoteStreams({});
     setAudioLevel(0);
@@ -741,7 +918,10 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
       // Initiate WebRTC Offer
       try {
         const pc = createPeerConnection(data.socketId);
-        const offer = await pc.createOffer();
+        const offer = await pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true
+        });
         await pc.setLocalDescription(offer);
         socket.emit("call-signal", {
           targetSocketId: data.socketId,
@@ -755,17 +935,20 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
 
     const handleExistingParticipants = (list) => {
       if (Array.isArray(list) && list.length > 0) {
-        const peers = list.map((item) => ({
-          id: item.socketId,
-          socketId: item.socketId,
-          name: item.user?.fullName || item.user?.name || "Студент",
-          role: item.user?.role || "Студент",
-          isSpeaking: false,
-          hasVideo: item.mediaState?.video ?? true,
-          isScreenSharing: item.mediaState?.screen ?? false,
-          hasMic: item.mediaState?.mic ?? true,
-          handRaised: item.mediaState?.handRaised ?? false
-        }));
+        const peers = list.map((item) => {
+          createPeerConnection(item.socketId);
+          return {
+            id: item.socketId,
+            socketId: item.socketId,
+            name: item.user?.fullName || item.user?.name || "Студент",
+            role: item.user?.role || "Студент",
+            isSpeaking: false,
+            hasVideo: item.mediaState?.video ?? true,
+            isScreenSharing: item.mediaState?.screen ?? false,
+            hasMic: item.mediaState?.mic ?? true,
+            handRaised: item.mediaState?.handRaised ?? false
+          };
+        });
 
         setParticipants(peers);
       } else {
@@ -779,6 +962,16 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
 
         if (signal.sdp) {
           await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+
+          // Flush queued candidates
+          if (iceCandidateQueueRef.current[senderSocketId]) {
+            const queue = iceCandidateQueueRef.current[senderSocketId];
+            delete iceCandidateQueueRef.current[senderSocketId];
+            for (const cand of queue) {
+              await pc.addIceCandidate(cand).catch((e) => console.warn("Queued candidate error:", e));
+            }
+          }
+
           if (signal.sdp.type === "offer") {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
@@ -789,7 +982,15 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
             });
           }
         } else if (signal.candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          const candidate = new RTCIceCandidate(signal.candidate);
+          if (pc.remoteDescription && pc.remoteDescription.type) {
+            await pc.addIceCandidate(candidate).catch((e) => console.warn("addIceCandidate error:", e));
+          } else {
+            if (!iceCandidateQueueRef.current[senderSocketId]) {
+              iceCandidateQueueRef.current[senderSocketId] = [];
+            }
+            iceCandidateQueueRef.current[senderSocketId].push(candidate);
+          }
         }
       } catch (err) {
         console.warn("Signal handling error:", err);
