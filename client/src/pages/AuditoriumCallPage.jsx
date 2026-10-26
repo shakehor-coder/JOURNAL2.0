@@ -1,18 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import {
-  Mic,
-  MicOff,
   Video,
-  VideoOff,
   Monitor,
   PhoneOff,
-  Hand,
-  MessageSquare,
   Users,
   PenTool,
   Code2,
-  Send,
   Copy,
   Check,
   AlertCircle,
@@ -21,7 +15,10 @@ import {
   X,
   ChevronDown,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  RefreshCw,
+  ShieldCheck,
+  Radio
 } from "lucide-react";
 
 export const CALL_AUDITORIUMS = [
@@ -91,186 +88,17 @@ export const CALL_AUDITORIUMS = [
   }
 ];
 
-export const ICE_SERVERS = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-  { urls: "stun:stun2.l.google.com:19302" },
-  { urls: "stun:stun3.l.google.com:19302" },
-  { urls: "stun:stun4.l.google.com:19302" },
-  { urls: "stun:stun.services.mozilla.com" },
-  { urls: "stun:stun.relay.metered.ca:80" },
-  { urls: "stun:openrelay.metered.ca:80" }
-];
-
-/**
- * Clean Remote Video Participant
- */
-const RemoteParticipantCard = ({ participant, stream }) => {
-  const videoRef = useRef(null);
-  const audioRef = useRef(null);
-  const [fullscreen, setFullscreen] = useState(false);
-
-  // Always keep audio playing through dedicated element
-  useEffect(() => {
-    if (audioRef.current && stream) {
-      if (audioRef.current.srcObject !== stream) {
-        audioRef.current.srcObject = stream;
-      }
-      audioRef.current.play?.().catch((e) => {
-        console.warn("Audio autoplay pending interaction:", e);
-      });
-    }
-  }, [stream]);
-
-  const hasLiveVideoTrack = Boolean(
-    stream &&
-    stream.getVideoTracks().some((t) => t.readyState === "live")
-  );
-
-  const isShowingVideo = Boolean(
-    stream &&
-    (participant.hasVideo || participant.isScreenSharing || hasLiveVideoTrack)
-  );
-
-  useEffect(() => {
-    if (videoRef.current && stream) {
-      if (videoRef.current.srcObject !== stream) {
-        videoRef.current.srcObject = stream;
-      }
-      videoRef.current.play?.().catch((e) => console.log("Remote play err:", e));
-    }
-  }, [stream, isShowingVideo, participant.isScreenSharing, participant.hasVideo]);
-
-  const handleCardClick = () => {
-    if (audioRef.current && audioRef.current.paused) {
-      audioRef.current.play().catch(() => {});
-    }
-    if (videoRef.current && videoRef.current.paused) {
-      videoRef.current.play().catch(() => {});
-    }
-  };
-
-  const initials = participant.name
-    ? participant.name
-        .split(" ")
-        .map((n) => n[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase()
-    : "СТ";
-
-  const toggleFullscreen = () => {
-    if (!fullscreen) {
-      const el = videoRef.current;
-      if (el?.requestFullscreen) {
-        el.requestFullscreen().catch(() => setFullscreen(true));
-      } else {
-        setFullscreen(true);
-      }
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch(() => setFullscreen(false));
-      }
-      setFullscreen(false);
-    }
-  };
-
-  return (
-    <div
-      onClick={handleCardClick}
-      className={`relative rounded-[10px] bg-surface border-2 border-ink overflow-hidden aspect-video flex items-center justify-center shadow-hard cursor-pointer ${participant.isScreenSharing ? "ring-4 ring-accent" : ""}`}
-    >
-      {/* Hidden audio element ensuring audio stream is ALWAYS heard */}
-      <audio
-        ref={(el) => {
-          audioRef.current = el;
-          if (el && stream && el.srcObject !== stream) {
-            el.srcObject = stream;
-            el.play?.().catch(() => {});
-          }
-        }}
-        autoPlay
-        playsInline
-      />
-
-      {isShowingVideo ? (
-        <video
-          ref={(el) => {
-            videoRef.current = el;
-            if (el && stream && el.srcObject !== stream) {
-              el.srcObject = stream;
-              el.play?.().catch(() => {});
-            }
-          }}
-          autoPlay
-          playsInline
-          muted
-          className={`w-full h-full ${participant.isScreenSharing ? "object-contain bg-black" : "object-cover"}`}
-        />
-      ) : (
-        <div className="flex flex-col items-center justify-center p-4 text-center">
-          <div className="w-16 h-16 rounded-full bg-highlight text-on-highlight border-2 border-ink flex items-center justify-center font-bold text-xl mb-2">
-            {initials}
-          </div>
-          <span className="text-[14px] font-bold text-ink">{participant.name}</span>
-          <span className="text-[12px] text-ink-muted">Камера выключена</span>
-        </div>
-      )}
-
-      {/* Participant Name Badge */}
-      <div className="absolute top-3 left-3 flex items-center gap-1.5 flex-wrap">
-        <span className="px-2.5 py-1 rounded-[6px] bg-surface text-ink border-2 border-ink text-[12px] font-bold flex items-center gap-1.5 shadow-hard-xs">
-          <span
-            className={`w-2 h-2 rounded-full ${
-              participant.isSpeaking ? "bg-success scale-125" : "bg-ink-muted"
-            }`}
-          />
-          <span>{participant.name}</span>
-        </span>
-        {participant.isScreenSharing && (
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className="px-2 py-0.5 rounded-[6px] bg-accent text-white border-2 border-ink text-[12px] font-bold shadow-hard-xs animate-pulse cursor-pointer hover:bg-accent/90"
-            title="Развернуть демонстрацию экрана"
-          >
-            🖥️ Экран (Во весь экран)
-          </button>
-        )}
-        {participant.handRaised && (
-          <span className="px-2 py-0.5 rounded-[6px] bg-highlight text-on-highlight border-2 border-ink text-[12px] font-bold">
-            ✋ Рука
-          </span>
-        )}
-      </div>
-
-      {/* Mic status indicator */}
-      <div className="absolute bottom-3 right-3">
-        <span
-          className={`p-1.5 rounded-[6px] border-2 border-ink flex items-center justify-center shadow-hard-xs ${
-            participant.hasMic ? "bg-surface text-success" : "bg-danger text-white"
-          }`}
-        >
-          {participant.hasMic ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-        </span>
-      </div>
-    </div>
-  );
-};
-
 export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoomId }) => {
-  const { user, socket } = useAuth();
+  const { user } = useAuth();
   const [roomId, setLocalRoomId] = useState(initialRoomId || "group-9-3-rpo");
 
   useEffect(() => {
     if (initialRoomId) setLocalRoomId(initialRoomId);
   }, [initialRoomId]);
+
   const [inCall, setInCall] = useState(false);
-  const [micOn, setMicOn] = useState(true);
-  const [cameraOn, setCameraOn] = useState(true);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [handRaised, setHandRaised] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
+  const [isLoadingCall, setIsLoadingCall] = useState(false);
+  const [callError, setCallError] = useState(null);
   const [callDuration, setCallDuration] = useState(0);
   const [callNotice, setCallNotice] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -280,64 +108,10 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
   const [customInput, setCustomInput] = useState("");
   const [showRoomDropdown, setShowRoomDropdown] = useState(false);
 
-  // Real Microphone Audio Level state (0 - 100)
-  const [audioLevel, setAudioLevel] = useState(0);
-  const [isSpeaking, setIsSpeaking] = useState(false);
+  const jitsiContainerRef = useRef(null);
+  const jitsiApiRef = useRef(null);
 
-  // Real connected peers ONLY (no fake participants!)
-  const [participants, setParticipants] = useState([]);
-  const [remoteStreams, setRemoteStreams] = useState({});
-
-  const [chatMessages, setChatMessages] = useState([]);
-  const [newMsg, setNewMsg] = useState("");
-
-  const localVideoRef = useRef(null);
-  const localStreamRef = useRef(null);
-  const audioContextRef = useRef(null);
-  const analyserRef = useRef(null);
-  const animFrameIdRef = useRef(null);
-  const peerConnectionsRef = useRef({});
-  const isSpeakingRef = useRef(false);
-  const screenStreamRef = useRef(null);
-  const iceCandidateQueueRef = useRef({});
-
-  // Always attach local stream to local video element when active
-  useEffect(() => {
-    if (inCall && localVideoRef.current && localStreamRef.current) {
-      if (localVideoRef.current.srcObject !== localStreamRef.current) {
-        localVideoRef.current.srcObject = localStreamRef.current;
-      }
-      localVideoRef.current.play?.().catch(() => {});
-    }
-  }, [inCall, cameraOn, isScreenSharing]);
-
-  // Global user-gesture audio unlocker
-  useEffect(() => {
-    const unlockAudio = () => {
-      document.querySelectorAll("audio").forEach((el) => {
-        if (el.srcObject && el.paused) {
-          el.play().catch(() => {});
-        }
-      });
-      if (audioContextRef.current && audioContextRef.current.state === "suspended") {
-        audioContextRef.current.resume().catch(() => {});
-      }
-    };
-    window.addEventListener("click", unlockAudio);
-    window.addEventListener("touchstart", unlockAudio);
-    return () => {
-      window.removeEventListener("click", unlockAudio);
-      window.removeEventListener("touchstart", unlockAudio);
-    };
-  }, []);
-
-  const userName = user?.fullName || user?.username || "Студент";
-  const userInitials = userName
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  const userName = user?.fullName || user?.username || "Студент ТОП";
 
   const currentAuditorium = CALL_AUDITORIUMS.find((a) => a.id === roomId) || {
     id: roomId,
@@ -372,7 +146,7 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
   // Call duration counter
   useEffect(() => {
     let timer = null;
-    if (inCall) {
+    if (inCall && !isLoadingCall) {
       timer = setInterval(() => {
         setCallDuration((prev) => prev + 1);
       }, 1000);
@@ -380,7 +154,7 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
       setCallDuration(0);
     }
     return () => clearInterval(timer);
-  }, [inCall]);
+  }, [inCall, isLoadingCall]);
 
   const formatDuration = (secs) => {
     const m = Math.floor(secs / 60);
@@ -401,701 +175,202 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
     setTimeout(() => setCopied(false), 2500);
   };
 
-  // Real Web Audio API Microphone Volume Detection
-  const setupAudioMeter = (stream) => {
-    try {
-      const audioTracks = stream.getAudioTracks();
-      if (!audioTracks || audioTracks.length === 0) return;
-
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtx) return;
-
-      const audioCtx = new AudioCtx();
-      audioContextRef.current = audioCtx;
-
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 64;
-      analyserRef.current = analyser;
-
-      const source = audioCtx.createMediaStreamSource(stream);
-      source.connect(analyser);
-
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-      const updateVolume = () => {
-        if (!localStreamRef.current) return;
-        analyser.getByteFrequencyData(dataArray);
-
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          sum += dataArray[i];
-        }
-        const avg = sum / dataArray.length;
-        const normalized = Math.min(100, Math.round((avg / 128) * 100));
-
-        setAudioLevel(normalized);
-        const speaking = normalized > 12;
-        setIsSpeaking(speaking);
-
-        if (socket && socket.connected && isSpeakingRef.current !== speaking) {
-          isSpeakingRef.current = speaking;
-          socket.emit("update-media-state", {
-            roomId,
-            mediaState: { isSpeaking: speaking }
-          });
-        }
-
-        animFrameIdRef.current = requestAnimationFrame(updateVolume);
-      };
-
-      updateVolume();
-    } catch (e) {
-      console.warn("Audio meter setup error:", e);
-    }
-  };
-
-  // Helper: Create a lightweight silent dummy video track for headless or no-webcam PCs
-  const createDummyVideoTrack = () => {
-    try {
-      const canvas = document.createElement("canvas");
-      canvas.width = 640;
-      canvas.height = 360;
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.fillStyle = "#0f172a";
-        ctx.fillRect(0, 0, 640, 360);
+  // Dynamic Jitsi External API Script Loader
+  const loadJitsiScript = () => {
+    return new Promise((resolve, reject) => {
+      if (window.JitsiMeetExternalAPI) {
+        resolve(window.JitsiMeetExternalAPI);
+        return;
       }
-      const stream = canvas.captureStream ? canvas.captureStream(5) : null;
-      if (stream && stream.getVideoTracks().length > 0) {
-        const track = stream.getVideoTracks()[0];
-        track.enabled = false;
-        return track;
+      const existingScript = document.getElementById("jitsi-external-api-script");
+      if (existingScript) {
+        existingScript.addEventListener("load", () => resolve(window.JitsiMeetExternalAPI));
+        existingScript.addEventListener("error", () => reject(new Error("Не удалось загрузить скрипт Jitsi")));
+        return;
       }
-    } catch (e) {
-      console.warn("Dummy track creation failed:", e);
-    }
-    return null;
-  };
-
-  // Start real user media (camera + microphone)
-  const startMedia = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true
-      });
-      localStreamRef.current = stream;
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
-      }
-      setupAudioMeter(stream);
-      return stream;
-    } catch (err) {
-      console.warn("Could not acquire video+audio. Trying audio only:", err.message);
-      try {
-        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const dummyTrack = createDummyVideoTrack();
-        if (dummyTrack) {
-          audioStream.addTrack(dummyTrack);
-        }
-        localStreamRef.current = audioStream;
-        setCameraOn(false);
-        setupAudioMeter(audioStream);
-        return audioStream;
-      } catch (err2) {
-        console.warn("No physical mic/camera found:", err2.message);
-        showNotice("Камера или микрофон не обнаружены (включен режим просмотра)");
-        const fallbackStream = new MediaStream();
-        const dummyTrack = createDummyVideoTrack();
-        if (dummyTrack) {
-          fallbackStream.addTrack(dummyTrack);
-        }
-        localStreamRef.current = fallbackStream;
-        setCameraOn(false);
-        setMicOn(false);
-        return fallbackStream;
-      }
-    }
-  };
-
-  // Toggle Microphone with dynamic browser device request
-  const toggleMic = async () => {
-    if (!micOn) {
-      try {
-        let aTrack = localStreamRef.current?.getAudioTracks().find((t) => t.readyState === "live");
-        if (!aTrack) {
-          const aStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          aTrack = aStream.getAudioTracks()[0];
-          if (!localStreamRef.current) localStreamRef.current = new MediaStream();
-          localStreamRef.current.addTrack(aTrack);
-          setupAudioMeter(localStreamRef.current);
-        } else {
-          aTrack.enabled = true;
-        }
-
-        setMicOn(true);
-
-        for (const pc of Object.values(peerConnectionsRef.current)) {
-          const senders = pc.getSenders ? pc.getSenders() : [];
-          const aSender = senders.find((s) => s.track && s.track.kind === "audio");
-          if (aSender) {
-            await aSender.replaceTrack(aTrack).catch(() => {});
-          } else {
-            pc.addTrack(aTrack, localStreamRef.current);
-          }
-        }
-
-        if (socket) {
-          socket.emit("update-media-state", {
-            roomId,
-            mediaState: { mic: true }
-          });
-        }
-        showNotice("Микрофон включен");
-      } catch (err) {
-        console.warn("Mic activation error:", err);
-        showNotice("Не удалось включить микрофон: проверьте доступ в браузере");
-      }
-    } else {
-      setMicOn(false);
-      if (localStreamRef.current) {
-        localStreamRef.current.getAudioTracks().forEach((t) => (t.enabled = false));
-      }
-      setAudioLevel(0);
-      setIsSpeaking(false);
-      isSpeakingRef.current = false;
-      if (socket) {
-        socket.emit("update-media-state", {
-          roomId,
-          mediaState: { mic: false, isSpeaking: false }
-        });
-      }
-      showNotice("Микрофон выключен");
-    }
-  };
-
-  // Toggle Camera with dynamic browser device request
-  const toggleCamera = async () => {
-    if (!cameraOn) {
-      try {
-        let vTrack = localStreamRef.current?.getVideoTracks().find((t) => t.readyState === "live" && !t.label?.includes("canvas"));
-        if (!vTrack) {
-          const vStream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-              facingMode: "user"
-            }
-          });
-          vTrack = vStream.getVideoTracks()[0];
-          if (!localStreamRef.current) {
-            localStreamRef.current = new MediaStream();
-          }
-          // Remove old dummy tracks
-          localStreamRef.current.getVideoTracks().forEach((t) => {
-            t.stop();
-            localStreamRef.current.removeTrack(t);
-          });
-          localStreamRef.current.addTrack(vTrack);
-        } else {
-          vTrack.enabled = true;
-        }
-
-        setCameraOn(true);
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = localStreamRef.current;
-          localVideoRef.current.play?.().catch(() => {});
-        }
-
-        await replaceVideoTrack(vTrack);
-
-        if (socket) {
-          socket.emit("update-media-state", {
-            roomId,
-            mediaState: { video: true }
-          });
-        }
-        showNotice("Камера включена!");
-      } catch (err) {
-        console.warn("Camera activation error:", err);
-        showNotice("Не удалось включить камеру: проверьте доступ в браузере");
-      }
-    } else {
-      setCameraOn(false);
-      if (localStreamRef.current) {
-        localStreamRef.current.getVideoTracks().forEach((t) => (t.enabled = false));
-      }
-      if (socket) {
-        socket.emit("update-media-state", {
-          roomId,
-          mediaState: { video: false }
-        });
-      }
-      showNotice("Камера выключена");
-    }
-  };
-
-  // Replace video track across all active RTCPeerConnections (or renegotiate if needed)
-  const replaceVideoTrack = async (newTrack) => {
-    for (const [targetSocketId, pc] of Object.entries(peerConnectionsRef.current)) {
-      try {
-        const senders = pc.getSenders ? pc.getSenders() : [];
-        let videoSender = senders.find((s) => s.track && s.track.kind === "video");
-        if (!videoSender) {
-          videoSender = senders.find((s) => s.kind === "video" || s.track === null);
-        }
-
-        if (videoSender && newTrack) {
-          await videoSender.replaceTrack(newTrack);
-        } else if (newTrack) {
-          pc.addTrack(newTrack, screenStreamRef.current || localStreamRef.current || new MediaStream([newTrack]));
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          if (socket) {
-            socket.emit("call-signal", {
-              targetSocketId,
-              signal: { sdp: pc.localDescription },
-              senderUser: user
-            });
-          }
-        }
-      } catch (err) {
-        console.warn("replaceVideoTrack error:", err);
-      }
-    }
-  };
-
-  // Stop Screen Share cleanly
-  const stopScreenShare = () => {
-    if (screenStreamRef.current) {
-      screenStreamRef.current.getTracks().forEach((t) => t.stop());
-      screenStreamRef.current = null;
-    }
-    setIsScreenSharing(false);
-    let revertTrack = localStreamRef.current?.getVideoTracks().find((t) => t.readyState === "live");
-    if (!revertTrack) {
-      revertTrack = createDummyVideoTrack();
-      if (revertTrack && localStreamRef.current) {
-        localStreamRef.current.addTrack(revertTrack);
-      }
-    }
-    if (revertTrack) {
-      replaceVideoTrack(revertTrack);
-    }
-    if (localVideoRef.current && localStreamRef.current) {
-      localVideoRef.current.srcObject = localStreamRef.current;
-    }
-    if (socket) {
-      socket.emit("update-media-state", { roomId, mediaState: { screen: false, video: cameraOn } });
-    }
-    showNotice("Демонстрация экрана остановлена");
-  };
-
-  // Toggle Screen Share
-  const toggleScreenShare = async () => {
-    if (!isScreenSharing) {
-      try {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            cursor: "always"
-          },
-          audio: false
-        });
-        screenStreamRef.current = screenStream;
-
-        const screenTrack = screenStream.getVideoTracks()[0];
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = screenStream;
-        }
-
-        // Replace track for all existing remote WebRTC peers!
-        await replaceVideoTrack(screenTrack);
-
-        screenTrack.onended = () => {
-          stopScreenShare();
-        };
-
-        setIsScreenSharing(true);
-        if (socket) {
-          socket.emit("update-media-state", { roomId, mediaState: { screen: true, video: true } });
-        }
-        showNotice("Демонстрация экрана запущена!");
-      } catch (e) {
-        console.warn("Screen share cancelled or failed:", e);
-      }
-    } else {
-      stopScreenShare();
-    }
-  };
-
-  // Toggle Hand
-  const toggleHand = () => {
-    const next = !handRaised;
-    setHandRaised(next);
-    if (socket) {
-      socket.emit("update-media-state", {
-        roomId,
-        mediaState: { handRaised: next }
-      });
-    }
-    showNotice(next ? "Вы подняли руку" : "Вы опустили руку");
-  };
-
-  // WebRTC Peer Connection Helper
-  const createPeerConnection = (targetSocketId) => {
-    if (peerConnectionsRef.current[targetSocketId]) {
-      return peerConnectionsRef.current[targetSocketId];
-    }
-
-    const pc = new RTCPeerConnection({
-      iceServers: ICE_SERVERS
+      const script = document.createElement("script");
+      script.id = "jitsi-external-api-script";
+      script.src = "https://meet.jit.si/external_api.js";
+      script.async = true;
+      script.onload = () => resolve(window.JitsiMeetExternalAPI);
+      script.onerror = () => reject(new Error("Не удалось загрузить модуль видеоконференций. Проверьте интернет-соединение."));
+      document.body.appendChild(script);
     });
-
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => {
-        if (track.kind === "video" && screenStreamRef.current) {
-          const screenTrack = screenStreamRef.current.getVideoTracks()[0];
-          pc.addTrack(screenTrack || track, localStreamRef.current);
-        } else {
-          pc.addTrack(track, localStreamRef.current);
-        }
-      });
-    }
-
-    // Always ensure transceivers for both audio and video exist so we can receive both!
-    const transceivers = pc.getTransceivers ? pc.getTransceivers() : [];
-    const hasAudio = transceivers.some((t) => t.receiver?.track?.kind === "audio");
-    const hasVideo = transceivers.some((t) => t.receiver?.track?.kind === "video");
-
-    if (!hasAudio && pc.addTransceiver) {
-      pc.addTransceiver("audio", { direction: "sendrecv" });
-    }
-    if (!hasVideo && pc.addTransceiver) {
-      pc.addTransceiver("video", { direction: "sendrecv" });
-    }
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate && socket) {
-        socket.emit("call-signal", {
-          targetSocketId,
-          signal: { candidate: event.candidate },
-          senderUser: user
-        });
-      }
-    };
-
-    pc.oniceconnectionstatechange = () => {
-      console.log(`[WebRTC] ICE state with ${targetSocketId}:`, pc.iceConnectionState);
-      if (pc.iceConnectionState === "failed") {
-        pc.restartIce?.();
-      }
-    };
-
-    pc.ontrack = (event) => {
-      console.log(`[WebRTC] Received remote track (${event.track.kind}) from ${targetSocketId}`);
-      event.track.enabled = true;
-      setRemoteStreams((prev) => {
-        let stream = prev[targetSocketId];
-        if (event.streams && event.streams[0]) {
-          stream = event.streams[0];
-        } else {
-          if (!stream) {
-            stream = new MediaStream();
-          }
-          if (!stream.getTracks().some((t) => t.id === event.track.id)) {
-            stream.addTrack(event.track);
-          }
-        }
-        return {
-          ...prev,
-          [targetSocketId]: stream
-        };
-      });
-    };
-
-    peerConnectionsRef.current[targetSocketId] = pc;
-    return pc;
   };
 
-  // Join Call Room
+  // Initialize and Join Jitsi Call
   const handleJoinCall = async () => {
+    setCallError(null);
+    setIsLoadingCall(true);
     setInCall(true);
-    const stream = await startMedia();
 
-    if (socket) {
-      socket.emit("join-call-room", {
-        roomId,
-        user: {
-          id: user?.id || "student-" + Date.now(),
-          fullName: userName,
-          name: userName,
-          role: "Студент"
+    try {
+      const JitsiAPI = await loadJitsiScript();
+
+      if (!jitsiContainerRef.current) {
+        // Allow DOM to render container element
+        await new Promise((r) => setTimeout(r, 100));
+      }
+
+      if (!jitsiContainerRef.current) {
+        throw new Error("Контейнер аудитории не готов для подключения.");
+      }
+
+      // Dispose any existing Jitsi instance
+      if (jitsiApiRef.current) {
+        jitsiApiRef.current.dispose();
+        jitsiApiRef.current = null;
+      }
+
+      // Clear container DOM
+      jitsiContainerRef.current.innerHTML = "";
+
+      // Sanitize room name for Jitsi
+      const sanitizedRoomName = `TopAcademy_Journal2_${roomId.replace(/[^a-zA-Z0-9]/g, "_")}`;
+
+      const options = {
+        roomName: sanitizedRoomName,
+        width: "100%",
+        height: "100%",
+        parentNode: jitsiContainerRef.current,
+        userInfo: {
+          displayName: userName,
+          email: user?.email || `${user?.username || "student"}@top-academy.ru`,
+          avatarURL: user?.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userName)}`
+        },
+        configOverwrite: {
+          startWithAudioMuted: false,
+          startWithVideoMuted: false,
+          prejoinPageEnabled: false,
+          prejoinConfig: { enabled: false },
+          disableDeepLinking: true,
+          enableWelcomePage: false,
+          enableClosePage: false,
+          hideConferenceSubject: false,
+          subject: `${currentAuditorium.shortName} · ${currentAuditorium.subject}`,
+          toolbarButtons: [
+            "microphone",
+            "camera",
+            "desktop",
+            "chat",
+            "raisehand",
+            "tileview",
+            "participants-pane",
+            "select-background",
+            "noisesuppression",
+            "fullscreen",
+            "settings",
+            "videoquality",
+            "hangup"
+          ]
+        },
+        interfaceConfigOverwrite: {
+          SHOW_JITSI_WATERMARK: false,
+          SHOW_WATERMARK_FOR_GUESTS: false,
+          SHOW_BRAND_WATERMARK: false,
+          BRAND_WATERMARK_LINK: "",
+          SHOW_POWERED_BY: false,
+          DEFAULT_BACKGROUND: "#0f172a",
+          TOOLBAR_ALWAYS_VISIBLE: true
         }
-      });
-    }
-    showNotice("Вы вошли в аудиторию!");
-  };
-
-  // Leave Call Room
-  const handleLeaveCall = () => {
-    setInCall(false);
-    if (socket) {
-      socket.emit("leave-call-room", { roomId });
-    }
-    if (screenStreamRef.current) {
-      screenStreamRef.current.getTracks().forEach((t) => t.stop());
-      screenStreamRef.current = null;
-    }
-    setIsScreenSharing(false);
-    if (animFrameIdRef.current) {
-      cancelAnimationFrame(animFrameIdRef.current);
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close().catch(() => {});
-    }
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
-      localStreamRef.current = null;
-    }
-    Object.values(peerConnectionsRef.current).forEach((pc) => pc.close());
-    peerConnectionsRef.current = {};
-    iceCandidateQueueRef.current = {};
-    setParticipants([]);
-    setRemoteStreams({});
-    setAudioLevel(0);
-    setIsSpeaking(false);
-    showNotice("Вы вышли из аудитории.");
-  };
-
-  // Send Chat Message
-  const handleSendMessage = (e) => {
-    e.preventDefault();
-    if (!newMsg.trim()) return;
-    const msg = {
-      id: Date.now().toString(),
-      sender: userName,
-      text: newMsg.trim(),
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    };
-    setChatMessages((prev) => [...prev, msg]);
-    if (socket) {
-      socket.emit("send-call-message", { roomId, message: msg });
-    }
-    setNewMsg("");
-  };
-
-  // Socket Events: Only Real Connected Users!
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleNewMessage = (msg) => {
-      setChatMessages((prev) => {
-        if (prev.some((m) => m.id === msg.id)) return prev;
-        return [...prev, msg];
-      });
-    };
-
-    const handleUserJoined = async (data) => {
-      const newPeer = {
-        id: data.socketId,
-        socketId: data.socketId,
-        name: data.user?.fullName || data.user?.name || "Одногруппник",
-        role: data.user?.role || "Студент",
-        isSpeaking: false,
-        hasVideo: data.mediaState?.video ?? true,
-        isScreenSharing: data.mediaState?.screen ?? false,
-        hasMic: data.mediaState?.mic ?? true,
-        handRaised: data.mediaState?.handRaised ?? false
       };
 
-      setParticipants((prev) => {
-        if (prev.some((p) => p.socketId === data.socketId)) return prev;
-        return [...prev, newPeer];
-      });
+      const api = new JitsiAPI("meet.jit.si", options);
+      jitsiApiRef.current = api;
 
-      showNotice(`${newPeer.name} подключился к аудитории!`);
-
-      // Initiate WebRTC Offer
-      try {
-        const pc = createPeerConnection(data.socketId);
-        const offer = await pc.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: true
-        });
-        await pc.setLocalDescription(offer);
-        socket.emit("call-signal", {
-          targetSocketId: data.socketId,
-          signal: { sdp: pc.localDescription },
-          senderUser: user
-        });
-      } catch (err) {
-        console.warn("WebRTC offer error:", err);
-      }
-    };
-
-    const handleExistingParticipants = (list) => {
-      if (Array.isArray(list) && list.length > 0) {
-        const peers = list.map((item) => {
-          createPeerConnection(item.socketId);
-          return {
-            id: item.socketId,
-            socketId: item.socketId,
-            name: item.user?.fullName || item.user?.name || "Студент",
-            role: item.user?.role || "Студент",
-            isSpeaking: false,
-            hasVideo: item.mediaState?.video ?? true,
-            isScreenSharing: item.mediaState?.screen ?? false,
-            hasMic: item.mediaState?.mic ?? true,
-            handRaised: item.mediaState?.handRaised ?? false
-          };
-        });
-
-        setParticipants(peers);
-      } else {
-        setParticipants([]);
-      }
-    };
-
-    const handleCallSignal = async ({ senderSocketId, signal }) => {
-      try {
-        const pc = createPeerConnection(senderSocketId);
-
-        if (signal.sdp) {
-          await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-
-          // Flush queued candidates
-          if (iceCandidateQueueRef.current[senderSocketId]) {
-            const queue = iceCandidateQueueRef.current[senderSocketId];
-            delete iceCandidateQueueRef.current[senderSocketId];
-            for (const cand of queue) {
-              await pc.addIceCandidate(cand).catch((e) => console.warn("Queued candidate error:", e));
-            }
-          }
-
-          if (signal.sdp.type === "offer") {
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            socket.emit("call-signal", {
-              targetSocketId: senderSocketId,
-              signal: { sdp: pc.localDescription },
-              senderUser: user
-            });
-          }
-        } else if (signal.candidate) {
-          const candidate = new RTCIceCandidate(signal.candidate);
-          if (pc.remoteDescription && pc.remoteDescription.type) {
-            await pc.addIceCandidate(candidate).catch((e) => console.warn("addIceCandidate error:", e));
-          } else {
-            if (!iceCandidateQueueRef.current[senderSocketId]) {
-              iceCandidateQueueRef.current[senderSocketId] = [];
-            }
-            iceCandidateQueueRef.current[senderSocketId].push(candidate);
-          }
+      api.addEventListeners({
+        videoConferenceJoined: () => {
+          setIsLoadingCall(false);
+          showNotice(`Вы успешно вошли в ${currentAuditorium.shortName}!`);
+        },
+        videoConferenceLeft: () => {
+          handleLeaveCall();
+        },
+        readyToClose: () => {
+          handleLeaveCall();
         }
-      } catch (err) {
-        console.warn("Signal handling error:", err);
-      }
-    };
-
-    const handlePeerMediaUpdated = ({ socketId, mediaState }) => {
-      setParticipants((prev) =>
-        prev.map((p) => {
-          if (p.socketId === socketId) {
-            return {
-              ...p,
-              hasMic: mediaState.mic !== undefined ? mediaState.mic : p.hasMic,
-              hasVideo: mediaState.video !== undefined ? mediaState.video : p.hasVideo,
-              isScreenSharing: mediaState.screen !== undefined ? mediaState.screen : p.isScreenSharing,
-              handRaised: mediaState.handRaised !== undefined ? mediaState.handRaised : p.handRaised,
-              isSpeaking: mediaState.isSpeaking !== undefined ? mediaState.isSpeaking : p.isSpeaking
-            };
-          }
-          return p;
-        })
-      );
-    };
-
-    const handleUserLeft = ({ socketId }) => {
-      setParticipants((prev) => {
-        const leaving = prev.find((p) => p.socketId === socketId);
-        if (leaving) {
-          showNotice(`${leaving.name} покинул аудиторию`);
-        }
-        return prev.filter((p) => p.socketId !== socketId);
       });
+    } catch (err) {
+      console.error("Jitsi initialization error:", err);
+      setCallError(err.message || "Ошибка подключения к видеоконференции");
+      setIsLoadingCall(false);
+      setInCall(false);
+    }
+  };
 
-      if (peerConnectionsRef.current[socketId]) {
-        peerConnectionsRef.current[socketId].close();
-        delete peerConnectionsRef.current[socketId];
-      }
+  // Leave Call cleanly
+  const handleLeaveCall = () => {
+    if (jitsiApiRef.current) {
+      try {
+        jitsiApiRef.current.dispose();
+      } catch (_) {}
+      jitsiApiRef.current = null;
+    }
+    setInCall(false);
+    setIsLoadingCall(false);
+    setCallDuration(0);
+    showNotice("Вы покинули аудиторию.");
+  };
 
-      setRemoteStreams((prev) => {
-        const updated = { ...prev };
-        delete updated[socketId];
-        return updated;
-      });
-    };
-
-    socket.on("new-call-message", handleNewMessage);
-    socket.on("user-joined-call", handleUserJoined);
-    socket.on("existing-participants", handleExistingParticipants);
-    socket.on("call-signal", handleCallSignal);
-    socket.on("peer-media-updated", handlePeerMediaUpdated);
-    socket.on("user-left-call", handleUserLeft);
-
+  // Cleanup on component unmount
+  useEffect(() => {
     return () => {
-      socket.off("new-call-message", handleNewMessage);
-      socket.off("user-joined-call", handleUserJoined);
-      socket.off("existing-participants", handleExistingParticipants);
-      socket.off("call-signal", handleCallSignal);
-      socket.off("peer-media-updated", handlePeerMediaUpdated);
-      socket.off("user-left-call", handleUserLeft);
+      if (jitsiApiRef.current) {
+        try {
+          jitsiApiRef.current.dispose();
+        } catch (_) {}
+        jitsiApiRef.current = null;
+      }
     };
-  }, [socket, user]);
+  }, []);
 
   return (
-    <div className="max-w-[1200px] mx-auto p-4 sm:p-6 grid gap-6">
+    <div className="max-w-[1400px] mx-auto p-4 sm:p-6 space-y-6">
       {/* Toast Notice */}
       {callNotice && (
-        <div className="fixed top-6 right-6 z-50 p-3 rounded-[6px] bg-surface border-2 border-ink text-ink font-medium text-[13px] shadow-hard flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 text-accent" />
+        <div className="fixed top-20 right-6 z-50 bg-ink text-white px-4 py-2.5 rounded-[8px] border-2 border-line text-[13px] font-bold shadow-hard flex items-center gap-2 animate-bounce">
+          <Sparkles className="w-4 h-4 text-highlight" />
           <span>{callNotice}</span>
         </div>
       )}
 
-      {/* Top Header Row */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b-2 border-ink">
+      {/* Top Header / Classroom Switcher */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b-2 border-ink">
         <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-[22px] font-bold text-ink tracking-tight flex items-center gap-2">
-              <span>Аудитория (Звонок)</span>
-            </h1>
-            {inCall && (
-              <span className="font-mono text-[12px] bg-highlight text-on-highlight border-2 border-ink rounded-full px-2.5 py-0.5 font-bold flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-success" />
-                <span>В эфире · {formatDuration(callDuration)}</span>
-              </span>
-            )}
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-[6px] bg-accent text-white flex items-center justify-center font-bold text-sm shadow-hard-xs">
+              {currentAuditorium.icon}
+            </div>
+            <div>
+              <h1 className="text-[20px] font-bold text-ink tracking-tight flex items-center gap-2">
+                <span>{currentAuditorium.name}</span>
+                <span className="text-[12px] font-mono px-2 py-0.5 rounded-[4px] bg-accent/10 text-accent border border-accent/30">
+                  {currentAuditorium.subject}
+                </span>
+              </h1>
+              <p className="text-[12px] text-ink-muted">
+                {currentAuditorium.desc}
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-[13px] text-ink-muted">
-              Текущий класс:
-            </span>
-            <div className="relative inline-block">
+
+          {/* Quick Classroom Dropdown */}
+          <div className="flex items-center gap-2 mt-2">
+            <div className="relative">
               <button
                 type="button"
                 onClick={() => setShowRoomDropdown(!showRoomDropdown)}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[6px] bg-surface-2 border border-ink text-[12px] font-bold text-ink hover:bg-highlight hover:text-on-highlight transition-colors cursor-pointer"
+                className="btn sec text-[12px] h-7 px-2.5 flex items-center gap-1.5 font-bold"
               >
-                <span>{currentAuditorium.icon}</span>
-                <span>{currentAuditorium.shortName}</span>
-                <ChevronDown className="w-3 h-3 ml-0.5" />
+                <School className="w-3.5 h-3.5 text-accent" />
+                <span>Сменить аудиторию</span>
+                <ChevronDown className="w-3 h-3 text-ink-muted" />
               </button>
 
               {showRoomDropdown && (
-                <div className="absolute left-0 mt-1.5 w-72 bg-surface border-2 border-ink rounded-[10px] shadow-hard z-50 p-2 space-y-1">
-                  <div className="px-2 py-1 text-[11px] font-mono text-ink-muted uppercase tracking-wider">
-                    Сменить аудиторию
+                <div className="absolute left-0 top-full mt-1.5 w-80 bg-surface border-2 border-ink rounded-[8px] shadow-hard z-30 p-1.5 space-y-1">
+                  <div className="px-2 py-1 text-[11px] font-bold text-ink-muted uppercase tracking-wider">
+                    Учебные аудитории Академии ТОП
                   </div>
                   {CALL_AUDITORIUMS.map((aud) => (
                     <button
@@ -1130,8 +405,10 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
                 </div>
               )}
             </div>
-            <span className="text-[12px] font-mono text-ink-muted hidden sm:inline">
-              · Full-Duplex WebRTC
+
+            <span className="text-[12px] font-mono text-ink-muted hidden sm:inline flex items-center gap-1.5">
+              <Radio className="w-3.5 h-3.5 text-success animate-pulse" />
+              <span>Jitsi Meet SFU · HD Видео · Демка · Микрофон</span>
             </span>
           </div>
         </div>
@@ -1144,16 +421,16 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
               if (setRoomId) setRoomId(roomId);
               setActiveTab("whiteboard");
             }}
-            className="btn sec h-9 text-[13px]"
+            className="btn sec h-9 text-[13px] flex items-center gap-2"
             title="Открыть доску этой аудитории"
           >
-            <PenTool className="w-4 h-4 text-ink" strokeWidth={2} />
+            <PenTool className="w-4 h-4 text-accent" strokeWidth={2} />
             <span>Электронная доска</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab("code")}
-            className="btn sec h-9 text-[13px]"
+            className="btn sec h-9 text-[13px] flex items-center gap-2"
           >
             <Code2 className="w-4 h-4 text-ink" strokeWidth={2} />
             <span>Песочница кода</span>
@@ -1161,7 +438,7 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
         </div>
       </div>
 
-      {/* 1. Pre-call Join Screen */}
+      {/* 1. Pre-call Screen (Auditorium Selector & Ready CTA) */}
       {!inCall ? (
         <div className="space-y-6">
           {/* Custom Room Modal */}
@@ -1299,8 +576,8 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
                 <h2>Готовность к звонку</h2>
               </div>
               <span className="font-mono text-[12px] text-success font-bold flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-success" />
-                <span>WebRTC Готов</span>
+                <span className="w-2 h-2 rounded-full bg-success animate-ping" />
+                <span>SFU Сервер Активен</span>
               </span>
             </header>
 
@@ -1318,12 +595,22 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
                     <span>·</span>
                     <span>Предмет: <strong className="text-ink">{currentAuditorium.subject}</strong></span>
                     <span>·</span>
-                    <span className="text-success font-bold">P2P Audio/Video/Screen</span>
+                    <span className="text-success font-bold">HD Камера · Микрофон · Демка Экрана</span>
                   </div>
                 </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2.5 md:shrink-0">
+                <button
+                  type="button"
+                  onClick={copyRoomLink}
+                  className="btn sec h-11 px-3 text-[13px] flex items-center gap-2"
+                  title="Скопировать ссылку для одногруппников"
+                >
+                  {copied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4 text-ink" />}
+                  <span>{copied ? "Скопировано!" : "Ссылка"}</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -1334,13 +621,13 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
                   title="Открыть электронную доску этой аудитории"
                 >
                   <PenTool className="w-4 h-4 text-ink" />
-                  <span>Доска аудитории</span>
+                  <span>Доска</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handleJoinCall}
-                  className="btn pri h-11 px-6 text-[14px] flex items-center gap-2 !bg-accent text-white font-bold shadow-hard cursor-pointer"
+                  className="btn pri h-11 px-6 text-[14px] flex items-center gap-2 !bg-accent text-white font-bold shadow-hard cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-all"
                 >
                   <Video className="w-4 h-4" />
                   <span>Войти в {currentAuditorium.shortName}</span>
@@ -1348,277 +635,110 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
               </div>
             </div>
           </div>
+
+          {/* Instructions Notice */}
+          <div className="rounded-[10px] bg-surface-2 border border-line p-4 text-[13px] text-ink-muted flex items-start gap-3">
+            <ShieldCheck className="w-5 h-5 text-accent shrink-0 mt-0.5" />
+            <div>
+              <strong className="text-ink block mb-0.5">Новый высокостабильный видеодвижок Jitsi Meet SFU:</strong>
+              При первом входе браузер запросит разрешение на камеру и микрофон — нажмите «Разрешить». Демонстрация экрана включается в один клик по иконке монитора в нижней панели звонка.
+            </div>
+          </div>
         </div>
       ) : (
-        /* 2. Active Call Grid */
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
-          <div className={`${chatOpen ? "lg:col-span-3" : "lg:col-span-4"} space-y-4`}>
-            {/* Video Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-h-[380px]">
-              {/* Local Participant Card */}
-              <div className="relative rounded-[10px] bg-ink border-2 border-ink overflow-hidden aspect-video flex items-center justify-center shadow-hard">
-                {cameraOn || isScreenSharing ? (
-                  <video
-                    ref={localVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className={`w-full h-full ${isScreenSharing ? "object-contain bg-black" : "object-cover -scale-x-100"}`}
-                  />
-                ) : (
-                  <div className="flex flex-col items-center justify-center p-4 text-center">
-                    <div className="w-16 h-16 rounded-full bg-highlight text-on-highlight border-2 border-ink flex items-center justify-center font-bold text-xl mb-2">
-                      {userInitials}
-                    </div>
-                    <span className="text-[14px] font-bold text-on-ink">{userName}</span>
-                    <span className="text-[12px] text-side-text/70">Камера выключена</span>
-                  </div>
-                )}
-
-                {/* Top Name Badge */}
-                <div className="absolute top-3 left-3 flex items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-[6px] bg-surface text-ink border-2 border-ink text-[12px] font-bold flex items-center gap-2 shadow-hard-xs">
-                    <span
-                      className={`w-2 h-2 rounded-full transition-transform ${
-                        isSpeaking ? "bg-success scale-125" : "bg-ink-muted"
-                      }`}
-                    />
-                    <span>Вы ({userName})</span>
-                  </span>
-
-                  {handRaised && (
-                    <span className="px-2 py-0.5 rounded-[6px] bg-highlight text-on-highlight border-2 border-ink text-[12px] font-bold">
-                      ✋ Рука
-                    </span>
-                  )}
-
-                  {isScreenSharing && (
-                    <span className="px-2 py-0.5 rounded-[6px] bg-accent text-white border-2 border-ink text-[12px] font-bold">
-                      Экран
-                    </span>
-                  )}
-                </div>
-
-                {/* Bottom: Real Microphone Activity Meter & Status */}
-                <div className="absolute bottom-3 right-3 flex items-center gap-2">
-                  {micOn && (
-                    <div
-                      className="flex items-end gap-0.5 h-6 px-1.5 py-1 rounded-[6px] bg-surface border-2 border-ink shadow-hard-xs"
-                      title={`Уровень микрофона: ${audioLevel}%`}
-                    >
-                      <span
-                        className={`w-1 rounded-xs transition-colors ${
-                          audioLevel > 5 ? "bg-success" : "bg-line"
-                        }`}
-                        style={{ height: "6px" }}
-                      />
-                      <span
-                        className={`w-1 rounded-xs transition-colors ${
-                          audioLevel > 20 ? "bg-success" : "bg-line"
-                        }`}
-                        style={{ height: "10px" }}
-                      />
-                      <span
-                        className={`w-1 rounded-xs transition-colors ${
-                          audioLevel > 45 ? "bg-success" : "bg-line"
-                        }`}
-                        style={{ height: "14px" }}
-                      />
-                      <span
-                        className={`w-1 rounded-xs transition-colors ${
-                          audioLevel > 70 ? "bg-warning" : "bg-line"
-                        }`}
-                        style={{ height: "18px" }}
-                      />
-                    </div>
-                  )}
-
-                  <span
-                    className={`p-1.5 rounded-[6px] border-2 border-ink flex items-center justify-center shadow-hard-xs ${
-                      micOn ? "bg-surface text-success" : "bg-danger text-white"
-                    }`}
-                  >
-                    {micOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-                  </span>
-                </div>
-              </div>
-
-              {/* Real Remote Participants */}
-              {participants.map((p) => (
-                <RemoteParticipantCard
-                  key={p.socketId}
-                  participant={p}
-                  stream={remoteStreams[p.socketId]}
-                />
-              ))}
-
-              {/* Waiting notice if no other participants yet */}
-              {participants.length === 0 && (
-                <div className="rounded-[10px] bg-surface border-2 border-ink p-6 text-center flex flex-col items-center justify-center space-y-3 shadow-hard min-h-[220px]">
-                  <div className="w-12 h-12 rounded-[6px] bg-surface-2 border-2 border-ink flex items-center justify-center text-ink">
-                    <Users className="w-6 h-6" strokeWidth={2} />
-                  </div>
-                  <div className="space-y-1">
-                    <h3 className="text-[15px] font-bold text-ink">В аудитории пока только вы</h3>
-                    <p className="text-[13px] text-ink-muted max-w-sm mx-auto">
-                      Микрофон и камера работают. Ожидание подключения преподавателя и одногруппников.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={copyRoomLink}
-                    className="btn sec text-[12px] h-8 mt-1"
-                  >
-                    {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copied ? "Ссылка скопирована!" : "Скопировать ссылку аудитории"}</span>
-                  </button>
-                </div>
-              )}
+        /* 2. Active Jitsi Meet Video Call Interface */
+        <div className="space-y-4">
+          {/* Top In-Call Bar */}
+          <div className="bg-surface border-2 border-ink rounded-[10px] shadow-hard p-3.5 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="font-bold text-[14px] text-ink flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-success animate-pulse" />
+                <span>{currentAuditorium.shortName}</span>
+              </span>
+              <span className="text-ink-muted">·</span>
+              <span className="font-mono text-[12px] text-accent font-bold flex items-center gap-1.5">
+                <span>В эфире:</span>
+                <span>{formatDuration(callDuration)}</span>
+              </span>
             </div>
 
-            {/* In-Call Controls Bar */}
-            <div className="bg-surface border-2 border-ink rounded-[10px] shadow-hard p-3.5 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <span className="font-bold text-[13px] text-ink flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-                  <span>{currentAuditorium.shortName}</span>
-                </span>
-                <span className="text-ink-muted">·</span>
-                <span className="font-mono text-[12px] text-ink-muted">
-                  {participants.length + 1} в эфире
-                </span>
-                <span className="text-ink-muted">·</span>
-                <span className="font-mono text-[12px] text-accent font-bold">
-                  {formatDuration(callDuration)}
-                </span>
-              </div>
-
-              {/* Control Buttons */}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (setRoomId) setRoomId(roomId);
-                    setActiveTab("whiteboard");
-                  }}
-                  className="btn sec h-10 text-[12px] hidden md:flex items-center gap-1.5"
-                  title="Открыть электронную доску этой аудитории"
-                >
-                  <PenTool className="w-3.5 h-3.5 text-accent" />
-                  <span>Доска</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={toggleMic}
-                  className={`btn h-10 ${micOn ? "sec" : "pri !bg-danger text-white"}`}
-                  title={micOn ? "Выключить микрофон" : "Включить микрофон"}
-                >
-                  {micOn ? <Mic className="w-4 h-4 text-success" /> : <MicOff className="w-4 h-4" />}
-                  <span className="hidden sm:inline">{micOn ? "Микрофон вкл" : "Микрофон выкл"}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={toggleCamera}
-                  className={`btn h-10 ${cameraOn ? "sec" : "pri !bg-danger text-white"}`}
-                  title={cameraOn ? "Выключить камеру" : "Включить камеру"}
-                >
-                  {cameraOn ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={toggleScreenShare}
-                  className={`btn h-10 ${isScreenSharing ? "pri !bg-accent" : "sec"}`}
-                  title="Демонстрация экрана"
-                >
-                  <Monitor className="w-4 h-4" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={toggleHand}
-                  className={`btn h-10 ${handRaised ? "pri !bg-highlight !text-on-highlight" : "sec"}`}
-                  title="Поднять руку"
-                >
-                  <Hand className="w-4 h-4" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleLeaveCall}
-                  className="btn pri !bg-danger text-white h-10 ml-2"
-                  title="Покинуть аудиторию"
-                >
-                  <PhoneOff className="w-4 h-4" />
-                  <span>Выйти</span>
-                </button>
-              </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (setRoomId) setRoomId(roomId);
+                  setActiveTab("whiteboard");
+                }}
+                className="btn sec h-9 text-[12px] flex items-center gap-1.5"
+                title="Открыть электронную доску этой аудитории"
+              >
+                <PenTool className="w-3.5 h-3.5 text-accent" />
+                <span>Доска</span>
+              </button>
 
               <button
                 type="button"
-                onClick={() => setChatOpen(!chatOpen)}
-                className={`btn h-10 ${chatOpen ? "pri !bg-surface-2 !text-ink" : "sec"}`}
+                onClick={() => setActiveTab("code")}
+                className="btn sec h-9 text-[12px] flex items-center gap-1.5"
+                title="Открыть песочницу кода"
               >
-                <MessageSquare className="w-4 h-4" />
-                <span>Чат ({chatMessages.length})</span>
+                <Code2 className="w-3.5 h-3.5 text-ink" />
+                <span>Песочница</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={copyRoomLink}
+                className="btn sec h-9 text-[12px] flex items-center gap-1.5"
+                title="Скопировать ссылку аудитории"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">{copied ? "Скопировано!" : "Поделиться"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLeaveCall}
+                className="btn pri !bg-danger text-white h-9 px-4 text-[13px] font-bold flex items-center gap-1.5 ml-2 shadow-hard-xs cursor-pointer hover:opacity-95"
+                title="Покинуть аудиторию"
+              >
+                <PhoneOff className="w-4 h-4" />
+                <span>Выйти</span>
               </button>
             </div>
           </div>
 
-          {/* Right Column: In-Call Chat Window */}
-          {chatOpen && (
-            <div className="lg:col-span-1 win flex flex-col justify-between h-[480px]">
-              <header>
-                <h2>Чат аудитории</h2>
-                <span className="font-mono text-[12px] text-ink-muted">
-                  {chatMessages.length} сообщ.
-                </span>
-              </header>
-
-              <div className="p-3 space-y-2 overflow-y-auto flex-1">
-                {chatMessages.length === 0 ? (
-                  <div className="text-center py-12 text-ink-muted text-[13px]">
-                    Сообщений пока нет. Напишите первое сообщение!
-                  </div>
-                ) : (
-                  chatMessages.map((m) => (
-                    <div
-                      key={m.id}
-                      className="p-2.5 rounded-[6px] bg-surface-2 border border-line text-[13px] space-y-1"
-                    >
-                      <div className="flex items-center justify-between text-[11px] text-ink-muted">
-                        <span className="font-bold text-ink">{m.sender}</span>
-                        <span className="font-mono">{m.time}</span>
-                      </div>
-                      <p className="text-ink leading-snug">{m.text}</p>
-                    </div>
-                  ))
-                )}
+          {/* Call Container */}
+          <div className="relative rounded-[12px] bg-ink border-2 border-ink shadow-hard overflow-hidden min-h-[640px] h-[78vh] flex items-center justify-center">
+            {isLoadingCall && (
+              <div className="absolute inset-0 bg-ink/90 z-20 flex flex-col items-center justify-center gap-3 text-white">
+                <RefreshCw className="w-8 h-8 animate-spin text-accent" />
+                <p className="text-[14px] font-bold">Подключение к аудитории {currentAuditorium.shortName}...</p>
+                <p className="text-[12px] text-white/60">Инициализация защищенного медиа-канала Jitsi SFU</p>
               </div>
+            )}
 
-              <form
-                onSubmit={handleSendMessage}
-                className="p-2.5 bg-surface-2 border-t-2 border-ink flex items-center gap-2"
-              >
-                <input
-                  type="text"
-                  value={newMsg}
-                  onChange={(e) => setNewMsg(e.target.value)}
-                  placeholder="Сообщение в чат..."
-                  className="flex-1 h-9 px-3 rounded-[6px] bg-surface border-2 border-ink text-[13px] text-ink placeholder:text-ink-muted focus:outline-accent"
-                />
+            {callError && (
+              <div className="absolute inset-0 bg-ink/95 z-30 flex flex-col items-center justify-center gap-3 p-6 text-center text-white">
+                <AlertCircle className="w-10 h-10 text-danger" />
+                <h3 className="text-lg font-bold">Не удалось подключиться к видеоконференции</h3>
+                <p className="text-xs text-white/70 max-w-md font-mono">{callError}</p>
                 <button
-                  type="submit"
-                  className="btn pri h-9 px-3"
-                  aria-label="Отправить"
+                  type="button"
+                  onClick={handleJoinCall}
+                  className="btn pri !bg-accent text-white mt-2"
                 >
-                  <Send className="w-3.5 h-3.5" />
+                  Попробовать снова
                 </button>
-              </form>
-            </div>
-          )}
+              </div>
+            )}
+
+            {/* Jitsi Iframe Parent Element */}
+            <div
+              ref={jitsiContainerRef}
+              className="w-full h-full min-h-[640px]"
+            />
+          </div>
         </div>
       )}
     </div>

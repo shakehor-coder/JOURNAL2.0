@@ -804,6 +804,28 @@ app.post("/api/code/run", (req, res) => {
     return res.status(400).json({ success: false, error: "Код программы не предоставлен" });
   }
 
+  // Security check: block dangerous operations and system access
+  const forbiddenPatterns = [
+    /process\s*\./i,
+    /child_process/i,
+    /require\s*\(/i,
+    /import\s*\(/i,
+    /fs\s*\./i,
+    /global\s*\./i,
+    /__proto__/i,
+    /constructor\s*\[/i,
+    /\.constructor\s*\(/i
+  ];
+  for (const pattern of forbiddenPatterns) {
+    if (pattern.test(code)) {
+      return res.json({
+        success: false,
+        error: "Ошибка безопасности: использование системных вызовов (process, require, child_process, fs) запрещено правилами песочницы.",
+        testResults: []
+      });
+    }
+  }
+
   const startTime = Date.now();
   const testResults = [];
   let passedCount = 0;

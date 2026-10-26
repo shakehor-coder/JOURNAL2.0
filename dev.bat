@@ -9,13 +9,15 @@ where node >nul 2>nul
 if %errorlevel% neq 0 (
   if exist "%LOCALAPPDATA%\Programs\nodejs\node.exe" (
     set "PATH=%LOCALAPPDATA%\Programs\nodejs;%PATH%"
+  ) else if exist "C:\Program Files\nodejs\node.exe" (
+    set "PATH=C:\Program Files\nodejs;%PATH%"
   )
 )
 
 echo 1. Запуск бэкенда (порт 5000)...
 start "Journal Backend" cmd /k "cd server && node src/index.js"
 
-echo 2. Запуск фронтенда Vite (порт 5173)...
+echo 2. Запуск фронтенда Vite (порт 3000)...
 cd client
 call npm run dev
 pause
