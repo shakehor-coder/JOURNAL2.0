@@ -175,22 +175,28 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
     setTimeout(() => setCopied(false), 2500);
   };
 
-  // Dynamic Jitsi External API Script Loader
+  // Dynamic Jitsi External API Script Loader (Framatalk open community server - no login required!)
+  const JITSI_DOMAIN = "framatalk.org";
+
   const loadJitsiScript = () => {
     return new Promise((resolve, reject) => {
+      // Remove any legacy meet.jit.si script to avoid authentication locks
+      const existingScript = document.getElementById("jitsi-external-api-script");
+      if (existingScript && !existingScript.src.includes(JITSI_DOMAIN)) {
+        existingScript.remove();
+        if (window.JitsiMeetExternalAPI) {
+          delete window.JitsiMeetExternalAPI;
+        }
+      }
+
       if (window.JitsiMeetExternalAPI) {
         resolve(window.JitsiMeetExternalAPI);
         return;
       }
-      const existingScript = document.getElementById("jitsi-external-api-script");
-      if (existingScript) {
-        existingScript.addEventListener("load", () => resolve(window.JitsiMeetExternalAPI));
-        existingScript.addEventListener("error", () => reject(new Error("Не удалось загрузить скрипт Jitsi")));
-        return;
-      }
+
       const script = document.createElement("script");
       script.id = "jitsi-external-api-script";
-      script.src = "https://meet.jit.si/external_api.js";
+      script.src = `https://${JITSI_DOMAIN}/external_api.js`;
       script.async = true;
       script.onload = () => resolve(window.JitsiMeetExternalAPI);
       script.onerror = () => reject(new Error("Не удалось загрузить модуль видеоконференций. Проверьте интернет-соединение."));
@@ -239,6 +245,7 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
           avatarURL: user?.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userName)}`
         },
         configOverwrite: {
+          defaultLanguage: "ru",
           startWithAudioMuted: true,
           startWithVideoMuted: true,
           prejoinPageEnabled: false,
@@ -275,7 +282,7 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
         }
       };
 
-      const api = new JitsiAPI("meet.jit.si", options);
+      const api = new JitsiAPI(JITSI_DOMAIN, options);
       jitsiApiRef.current = api;
 
       // Automatically hide loading overlay once iframe is mounted so it doesn't block Jitsi controls
@@ -653,12 +660,12 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
       ) : (
         /* 2. Active Jitsi Meet Video Call Interface */
         <div className="space-y-4">
-          {/* Helpful Host / Peripherals Hint */}
-          <div className="rounded-[8px] bg-accent/10 border border-accent/30 px-3.5 py-2 text-[12px] text-ink flex items-center justify-between gap-2">
+          {/* In-Call Info Banner */}
+          <div className="rounded-[8px] bg-success/10 border border-success/30 px-3.5 py-2 text-[12px] text-ink flex items-center justify-between gap-2">
             <span className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-accent shrink-0" />
+              <Sparkles className="w-4 h-4 text-success shrink-0" />
               <span>
-                <strong>Подсказка:</strong> Если в окне звонка написано <em>«The conference has not yet started»</em> — нажмите синюю кнопку <strong>«I am the host»</strong> слева и подтвердите вход через Google или GitHub, чтобы открыть комнату для всех.
+                <strong>Открытая аудитория:</strong> Вход свободный без паролей и подтверждений. Демонстрация экрана включается по иконке монитора в нижней панели звонка.
               </span>
             </span>
           </div>
