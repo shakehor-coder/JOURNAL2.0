@@ -239,8 +239,8 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
           avatarURL: user?.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userName)}`
         },
         configOverwrite: {
-          startWithAudioMuted: false,
-          startWithVideoMuted: false,
+          startWithAudioMuted: true,
+          startWithVideoMuted: true,
           prejoinPageEnabled: false,
           prejoinConfig: { enabled: false },
           disableDeepLinking: true,
@@ -277,6 +277,11 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
 
       const api = new JitsiAPI("meet.jit.si", options);
       jitsiApiRef.current = api;
+
+      // Automatically hide loading overlay once iframe is mounted so it doesn't block Jitsi controls
+      setTimeout(() => {
+        setIsLoadingCall(false);
+      }, 1200);
 
       api.addEventListeners({
         videoConferenceJoined: () => {
@@ -648,6 +653,16 @@ export const AuditoriumCallPage = ({ setActiveTab, roomId: initialRoomId, setRoo
       ) : (
         /* 2. Active Jitsi Meet Video Call Interface */
         <div className="space-y-4">
+          {/* Helpful Host / Peripherals Hint */}
+          <div className="rounded-[8px] bg-accent/10 border border-accent/30 px-3.5 py-2 text-[12px] text-ink flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-accent shrink-0" />
+              <span>
+                <strong>Подсказка:</strong> Если в окне звонка написано <em>«The conference has not yet started»</em> — нажмите синюю кнопку <strong>«I am the host»</strong> слева и подтвердите вход через Google или GitHub, чтобы открыть комнату для всех.
+              </span>
+            </span>
+          </div>
+
           {/* Top In-Call Bar */}
           <div className="bg-surface border-2 border-ink rounded-[10px] shadow-hard p-3.5 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
